@@ -5,7 +5,7 @@ from cavity import *
 print('Solving the adjoint')
 
 # adjoint of kinetic energy
-functional = u_and_p._base.copy()
+functional = base(u_and_p).copy()
 functional[:N*N] = 0
 
 adj = u_and_p.adjoint(functional, u_and_p._residual)

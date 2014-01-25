@@ -110,9 +110,9 @@ import numpy as np
 x = (np.arange(N) + 0.5) * dx
 y = (np.arange(N) + 0.5) * dy
 p, u_x, u_y = make_array(u_and_p)
-p = p._base
-u_x = 0.5 * (u_x[1:,1:-1] + u_x[:-1,1:-1])._base
-u_y = 0.5 * (u_y[1:-1,1:] + u_y[1:-1,:-1])._base
+p = base(p)
+u_x = 0.5 * base(u_x[1:,1:-1] + u_x[:-1,1:-1])
+u_y = 0.5 * base(u_y[1:-1,1:] + u_y[1:-1,:-1])
 
 from pylab import *
 streamplot(x, y, u_x.T, u_y.T, density=5)

@@ -4,7 +4,6 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
 from adarray import *
-from adarray import _base
 
 class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton=0):
@@ -19,7 +18,7 @@ class adsolution(adarray):
         assert functional.size == self.size
         J_u = self._res_diff_solulion.tocsc()
         J_s = self._residual._diff_recurse(u, self._residual_ops)
-        c_residual = splinalg.spsolve(J_u.T, _base(functional).ravel(),
+        c_residual = splinalg.spsolve(J_u.T, base(functional).ravel(),
                                       use_umfpack=False)
         return -(J_s.T * c_residual).reshape(u.shape)
 
@@ -32,9 +31,9 @@ class adsolution(adarray):
 
 def solve(func, u0, args=(), kargs={},
           max_iter=8, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
-    u = adarray(_base(u0.copy()))
+    u = adarray(base(u0.copy()))
     for i_Newton in range(max_iter):
-        res = func(u, *args, **kargs)  # TODO: how to put adarray context?
+        res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
         res_norm = np.linalg.norm(res._base)
         if verbose:
             print('    ', i_Newton, res_norm)

@@ -44,7 +44,7 @@ def _DEBUG_perturb(var):
 
 # --------------------- utilities --------------------- #
 
-def _base(a):
+def base(a):
     if isinstance(a, (numbers.Number, np.ndarray, list)):
         return a
     else:
@@ -135,7 +135,7 @@ def ravel(a):
     return a.reshape((a.size,))
 
 def copy(a, order='K'):
-    a_copy = adarray(np.copy(_base(a), order))
+    a_copy = adarray(np.copy(base(a), order))
     if isinstance(a, adarray):
         a_copy.add_ops(a, 1)
         if __DEBUG_MODE__:
@@ -162,7 +162,7 @@ def hstack(adarrays):
     ndarrays = []
     components, marker_arrays = [], []
     for array in adarrays:
-        ndarrays.append(_base(array))
+        ndarrays.append(base(array))
         if isinstance(array, (numbers.Number, np.ndarray)):
             marker_arrays.append(np.zeros_like(array))
         else:
@@ -251,26 +251,22 @@ class adarray:
     # ------------------ boolean operations ----------------- #
 
     def __eq__(self, a):
-        return self._base == _base(a)
+        return self._base == base(a)
 
     def __ne__(self, a):
-        return self._base != _base(a)
+        return self._base != base(a)
 
     def __gt__(self, a):
-        return self._base > _base(a)
-        #return adarray(np.asarray(self._base.__gt__(_base(a)), float))
+        return self._base > base(a)
     
     def __ge__(self, a):
-        return self._base >= _base(a)
-        #return adarray(np.asarray(self._base.__ge__(_base(a)), float))
+        return self._base >= base(a)
 
     def __lt__(self, a):
-        return self._base < _base(a)
-        #return adarray(np.asarray(self._base.__lt__(_base(a)), float))
+        return self._base < base(a)
     
     def __le__(self, a):
-        return self._base <= _base(a)
-        #return adarray(np.asarray(self._base.__le__(_base(a)), float))
+        return self._base <= base(a)
 
 
     # ------------------ arithmetic operations ----------------- #
@@ -333,10 +329,10 @@ class adarray:
             b = self
             if a.size > b.size:
                 a, b = b, a
-            a_x_b = adarray(_base(a) * _base(b))
+            a_x_b = adarray(base(a) * base(b))
 
-            a_multiplier = np.asarray(np.ravel(_base(b)), float)
-            b_multiplier = np.asarray(np.ravel(_base(a)), float)
+            a_multiplier = np.asarray(np.ravel(base(b)), float)
+            b_multiplier = np.asarray(np.ravel(base(a)), float)
 
             i = np.arange(b.size)
             j = i % a.size
@@ -349,8 +345,8 @@ class adarray:
             if not isinstance(b, np.ndarray): a_x_b.add_ops(b, b_multiplier)
 
             if __DEBUG_MODE__:
-                a_x_b._DEBUG_perturb = _DEBUG_perturb(self) * _base(a) \
-                                     + _base(self) * _DEBUG_perturb(a)
+                a_x_b._DEBUG_perturb = _DEBUG_perturb(self) * base(a) \
+                                     + base(self) * _DEBUG_perturb(a)
                 _DEBUG_check(a_x_b)
         return a_x_b
 
@@ -371,8 +367,8 @@ class adarray:
             multiplier = sp.diags(np.ravel(self._base), 0)
             self.add_ops(a, multiplier)
             if __DEBUG_MODE__:
-                self._DEBUG_perturb = _DEBUG_perturb(self) * _base(a) \
-                                    + _base(self) * _DEBUG_perturb(a)
+                self._DEBUG_perturb = _DEBUG_perturb(self) * base(a) \
+                                    + base(self) * _DEBUG_perturb(a)
                 _DEBUG_check(self)
         return self
 
@@ -420,7 +416,7 @@ class adarray:
         multiplier = sp.diags(data, 0)
         self.self_ops(multiplier)
 
-        self._base.__setitem__(ind, _base(a))
+        self._base.__setitem__(ind, base(a))
 
         if hasattr(a, '_base'):
             i = np.ravel(self._ind[ind])
