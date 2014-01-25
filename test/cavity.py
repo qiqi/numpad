@@ -88,17 +88,17 @@ def cavity(u_and_p, u_and_p0, dt):
     return hstack([ravel(r) for r in res])
 
 # ---------------------- time integration --------------------- #
-N = 128
+N = 50
 dx = dy = 1. / N
 t, dt = 0, 1
-Re = 5000
+Re = 2500
 
 u_and_p = zeros(N * (3 * N - 2))
 
 while True:
     print('t = ', t)
     u_and_p = solve(cavity, u_and_p, args=(u_and_p, dt),
-                    rel_tol=0.01, abs_tol=1E-11)
+                    rel_tol=0.05, abs_tol=1E-8)
     if u_and_p._n_Newton == 1:
         break
     elif u_and_p._n_Newton < 4:

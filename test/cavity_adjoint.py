@@ -2,6 +2,8 @@ import sys
 sys.path.append('..')
 from cavity import *
 
+print('Solving the adjoint')
+
 # adjoint of kinetic energy
 functional = u_and_p._base.copy()
 functional[:N*N] = 0
