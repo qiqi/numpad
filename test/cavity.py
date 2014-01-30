@@ -90,7 +90,7 @@ def cavity(u_and_p, u_and_p0, dt):
 # ---------------------- time integration --------------------- #
 N = 50
 dx = dy = 1. / N
-t, dt = 0, 1
+t, dt = 0, 1.
 Re = 2500
 
 u_and_p = zeros(N * (3 * N - 2))

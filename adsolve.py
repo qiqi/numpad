@@ -57,7 +57,7 @@ def solve(func, u0, args=(), kargs={},
 #                                                             #
 # =========================================================== #
 
-class Poisson1dTest(unittest.TestCase):
+class _Poisson1dTest(unittest.TestCase):
     def residual(self, u, f, dx):
         res = -2 * u
         res[1:] += u[:-1]
@@ -65,8 +65,8 @@ class Poisson1dTest(unittest.TestCase):
         return res / dx**2 + f
 
     def testPoisson1d(self):
-        N = 496
-        dx = adarray(1 / N)
+        N = 256
+        dx = adarray(1. / N)
 
         f = ones(N-1)
         u = zeros(N-1)
@@ -85,7 +85,7 @@ class Poisson1dTest(unittest.TestCase):
         self.assertAlmostEqual(0, np.abs(dJdf - u._base).max())
 
 
-class Poisson2dTest(unittest.TestCase):
+class _Poisson2dTest(unittest.TestCase):
     def residual(self, u, f, dx, dy):
         res = -(2 / dx**2 + 2 / dy**2) * u
         res[1:,:] += u[:-1,:] / dx**2
@@ -98,7 +98,7 @@ class Poisson2dTest(unittest.TestCase):
     def testPoisson2d(self):
         #N, M = 256, 512
         N, M = 256, 64
-        dx, dy = adarray([1 / N, 1 / M])
+        dx, dy = adarray([1. / N, 1. / M])
 
         f = ones((N-1, M-1))
         u = ones((N-1, M-1))
@@ -122,4 +122,6 @@ class Poisson2dTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # a = _Poisson1dTest()
+    # a.testPoisson1d()
     unittest.main()
