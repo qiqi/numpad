@@ -50,7 +50,6 @@ def base(a):
     else:
         return a._base
 
-
 # --------------------- adarray construction --------------------- #
 
 def zeros(shape):
@@ -191,7 +190,7 @@ def hstack(adarrays):
 
 class adarray:
     def __init__(self, array):
-        self._base = np.asarray(array, np.float64)
+        self._base = np.asarray(base(array), np.float64)
         self._ops = []
         self._ind = np.arange(self.size).reshape(self.shape)
 
@@ -247,6 +246,23 @@ class adarray:
         reshaped = adarray(self._base.reshape(shape))
         reshaped.add_ops(self, sp.eye(self.size))
         return reshaped
+
+    def sort(self, axis=-1, kind='quicksort'):
+        '''
+        sort in place
+        '''
+        ind = np.argsort(self._base, axis, kind)
+        self._base.sort(axis, kind)
+
+        j = np.ravel(self._ind[ind])
+        i = np.arange(j.size)
+        multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
+                                   shape=(j.size, self.size))
+        self.self_ops(multiplier)
+
+        if __DEBUG_MODE__:
+            self._DEBUG_perturb = _DEBUG_perturb(self)[ind]
+            _DEBUG_check(self)
 
     # ------------------ boolean operations ----------------- #
 
@@ -515,19 +531,6 @@ class _IndexingTest(unittest.TestCase):
         j = np.arange(len(i))
         J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N,len(i))).T
         self.assertEqual(0, (b.diff(a) - J).nnz)
-
-    def testTranspose(self):
-        N = 10
-        a = random(N)
-        b = random(N)
-        c = transpose([a, b])
-
-        i, j = np.arange(N) * 2, np.arange(N)
-        c_diff_a = sp.csr_matrix((np.ones(N), (i,j)), shape=(2*N, N))
-        i, j = np.arange(N) * 2 + 1, np.arange(N)
-        c_diff_b = sp.csr_matrix((np.ones(N), (i,j)), shape=(2*N, N))
-        self.assertEqual(0, (c.diff(a) - c_diff_a).nnz)
-        self.assertEqual(0, (c.diff(b) - c_diff_b).nnz)
 
 
 class _OperationsTest(unittest.TestCase):
