@@ -17,7 +17,7 @@ class interp:
         x0, y0 = array(x0), array(y0)
         self.x0 = x0.copy()
         if type == 'linear':
-            self.y0 = y0[:,newaxis].copy()
+            self.y0 = y0[:,np.newaxis].copy()
         elif type == 'cubic':
             y0p = solve(self.cspline_resid, zeros(y0.size), (x0, y0),
                         verbose=False)

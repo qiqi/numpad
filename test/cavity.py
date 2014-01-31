@@ -47,23 +47,30 @@ def cavity(u_and_p, u_and_p0, dt):
     # extend velocity to ghost cells with boundary conditions
     p, u_x, u_y = make_array(u_and_p)
     
+    # compute cell center values
+    u_x_c = 0.5 * (u_x[1:,1:-1] + u_x[:-1,1:-1])
+    u_y_c = 0.5 * (u_y[1:-1,1:] + u_y[1:-1,:-1])
+    u_xx_c = u_x_c**2
+    u_yy_c = u_y_c**2
+
+    # compute nodal values
+    u_x_n = 0.5 * (u_x[:,1:] + u_x[:,:-1])
+    u_y_n = 0.5 * (u_y[1:,:] + u_y[:-1,:])
+    u_xy_n = u_x_n * u_y_n
+
     # compute derivatives
-    du_x_dx = (u_x[2:,1:-1] - u_x[:-2,1:-1]) / (2 * dx)
-    du_y_dy = (u_y[1:-1,2:] - u_y[1:-1,:-2]) / (2 * dy)
-    
-    du_x_dy = (u_x[1:-1,2:] - u_x[1:-1,:-2]) / (2 * dy)
-    du_y_dx = (u_y[2:,1:-1] - u_y[:-2,1:-1]) / (2 * dx)
+    du_xx_dx = (u_xx_c[1:,:] - u_xx_c[:-1,:]) / (2 * dx)
+    du_yy_dy = (u_yy_c[:,1:] - u_yy_c[:,:-1]) / (2 * dy)
+
+    du_xy_dx = (u_xy_n[1:,1:-1] - u_xy_n[:-1,1:-1]) / (2 * dx)
+    du_xy_dy = (u_xy_n[1:-1,1:] - u_xy_n[1:-1,:-1]) / (2 * dy)
     
     dp_dx = (p[1:,:] - p[:-1,:]) / dx
     dp_dy = (p[:,1:] - p[:,:-1]) / dy
     
-    # compute interpolation
-    u_x_i = 0.25 * (u_x[1:,1:-2] + u_x[1:,2:-1] + u_x[:-1,1:-2] + u_x[:-1,2:-1])
-    u_y_i = 0.25 * (u_y[1:-2,1:] + u_y[2:-1,1:] + u_y[1:-2,:-1] + u_y[2:-1,:-1])
-    
     # convective rhs
-    conv_x = du_x_dx * u_x[1:-1, 1:-1] + du_x_dy * u_y_i + dp_dx
-    conv_y = du_y_dy * u_y[1:-1, 1:-1] + du_y_dx * u_x_i + dp_dy
+    conv_x = du_xx_dx + du_xy_dy + dp_dx
+    conv_y = du_yy_dy + du_xy_dx + dp_dy
     
     # viscous rhs
     visc_x = (u_x[2:,1:-1] - 2 * u_x[1:-1,1:-1] + u_x[:-2,1:-1]) / dx**2 \
@@ -91,7 +98,7 @@ def cavity(u_and_p, u_and_p0, dt):
 N = 50
 dx = dy = 1. / N
 t, dt = 0, 1.
-Re = 2500
+Re = 10000
 
 u_and_p = zeros(N * (3 * N - 2))
 

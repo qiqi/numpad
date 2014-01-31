@@ -72,6 +72,11 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False):
     _DEBUG_new_perturb(new_array)
     return new_array
 
+def loadtxt(fname, dtype=float, comments='#', delimiter=None,
+        converters=None, skiprows=0, usecols=None, unpack=False, ndmin=0):
+    return array(np.loadtxt(fname, dtype, comments, delimiter, converters,
+        skiprows, usecols, unpack, ndmin))
+
 # --------------------- algebraic functions --------------------- #
 
 def maximum(a, b):
@@ -284,6 +289,8 @@ class adarray:
     def __le__(self, a):
         return array(self._base <= base(a))
 
+    def all(self):
+        return self._base.all()
 
     # ------------------ arithmetic operations ----------------- #
 
