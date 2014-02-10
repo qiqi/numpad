@@ -19,6 +19,7 @@ def _DEBUG_mode(mode=True, tolerance=None):
     __DEBUG_TOL__ = tolerance
 
 def _DEBUG_check(output, message=''):
+    assert np.isfinite(output._base).all()
     out_perturb = np.zeros(output.size)
     for var, var_perturb in __DEBUG_SEED_ARRAYS__:
         J = output.diff(var)
@@ -39,6 +40,8 @@ def _DEBUG_new_perturb(var):
 def _DEBUG_perturb(var):
     if hasattr(var, '_DEBUG_perturb'):
         return var._DEBUG_perturb
+    elif isinstance(var, adarray):
+        return np.zeros(var.shape)
     else:
         return np.zeros(np.asarray(var).shape)
 
@@ -103,6 +106,9 @@ def exp(x, out=None):
             out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb(x)
             _DEBUG_check(out)
         return out
+
+def sqrt(x):
+    return x**(0.5)
 
 # ------------------ copy, stack, transpose operations ------------------- #
 
@@ -189,6 +195,13 @@ def hstack(adarrays):
         stacked_array._DEBUG_perturb = np.hstack(_DEBUG_perturb_list)
         _DEBUG_check(stacked_array)
     return stacked_array
+
+def vstack(adarrays):
+    return hstack([a.T for a in adarrays]).T
+
+def meshgrid(x, y):
+    ind_xx, ind_yy = np.meshgrid(x._ind, y._ind)
+    return x[ind_xx], y[ind_yy]
 
 
 # ===================== the adarray class ====================== #
@@ -362,7 +375,8 @@ class adarray:
             a_multiplier = sp.csr_matrix((a_multiplier, (i, j)))
 
             b_multiplier = sp.kron(sp.eye(b.size / a.size, b.size / a.size),
-                                   sp.dia_matrix((b_multiplier, 0), (b_multiplier.size, b_multiplier.size)))
+                                   sp.dia_matrix((b_multiplier, 0),
+                                       (b_multiplier.size, b_multiplier.size)))
 
             if not isinstance(a, np.ndarray): a_x_b.add_ops(a, a_multiplier)
             if not isinstance(b, np.ndarray): a_x_b.add_ops(b, b_multiplier)
@@ -387,7 +401,8 @@ class adarray:
             self._base *= a._base
             multiplier = sp.dia_matrix((np.ravel(a._base), 0), (a.size,a.size))
             self.self_ops(multiplier)
-            multiplier = sp.dia_matrix((np.ravel(self._base), 0), (self.size,self.size))
+            multiplier = sp.dia_matrix((np.ravel(self._base), 0),
+                                       (self.size, self.size))
             self.add_ops(a, multiplier)
             if __DEBUG_MODE__:
                 self._DEBUG_perturb = _DEBUG_perturb(self) * base(a) \
@@ -410,7 +425,9 @@ class adarray:
     def __pow__(self, a):
         assert isinstance(a, numbers.Number)
         self_to_a = adarray(self._base ** a)
-        multiplier = sp.dia_matrix((a * np.ravel(self._base)**(a-1), 0), (self.size,self.size))
+        multiplier = a * np.ravel(self._base)**(a-1)
+        multiplier[~np.isfinite(multiplier)] = 0
+        multiplier = sp.dia_matrix((multiplier, 0), (self.size,self.size))
         self_to_a.add_ops(self, multiplier)
         if __DEBUG_MODE__:
             self_to_a._DEBUG_perturb = a * self._base**(a-1) \
@@ -418,11 +435,6 @@ class adarray:
             _DEBUG_check(self_to_a)
         return self_to_a
     
-    # ------------------ algebraic function ----------------- #
-
-    def exp(self):
-        return exp(self)
-
     # ------------------ indexing ----------------- #
 
     def __getitem__(self, ind):
@@ -469,38 +481,66 @@ class adarray:
     # ------------------ differentiation ------------------ #
 
     def diff(self, u):
-        return self._diff_recurse(u, self.i_ops())
-    
-    def _diff_recurse(self, u, i_f_ops):
-        def multiply_ops(op0, op1):
-            if op0 is 0 or op1 is 0:
-                return 0
-            else:
-                return op0 * op1
+        _clear_tmp_product(self, self.i_ops())
+        return _diff_recurse(self, u, self.i_ops())
 
-        if i_f_ops == 0:  # I got to the bottom
-            if u is self:
-                return sp.eye(u.size, u.size)
-            else:
-                # return sp.csr_matrix((self.size, u.size))
-                return 0
-        else:
-            op = self._ops[i_f_ops - 1]
+# ------------------ recursive functions for differentiation --------------- #
+def _clear_tmp_product(f, i_f_ops):
+    if hasattr(f, '_tmp_product') and i_f_ops in f._tmp_product:
+        del f._tmp_product[i_f_ops]
+        if not f._tmp_product:   # empty
+            del f._tmp_product
+
+        if i_f_ops > 0:
+            op = f._ops[i_f_ops - 1]
             if len(op) == 1:  # self operation
-                multiplier = op[0]
-                multiplier1 = self._diff_recurse(u, i_f_ops - 1)
-                return multiply_ops(multiplier, multiplier1)
+                _clear_tmp_product(f, i_f_ops - 1)
             else:
                 other, i_other_ops, multiplier = op
-                multiplier1 = other._diff_recurse(u, i_other_ops)
-                other_diff = multiply_ops(multiplier, multiplier1)
-                this_diff = self._diff_recurse(u, i_f_ops - 1)
-                if this_diff is 0:
-                    return other_diff
-                elif other_diff is 0:
-                    return this_diff
-                else:
-                    return this_diff + other_diff
+                _clear_tmp_product(other, i_other_ops)
+                _clear_tmp_product(f, i_f_ops - 1)
+
+def _diff_recurse(f, u, i_f_ops):
+    def multiply_ops(op0, op1):
+        if op0 is 0 or op1 is 0:
+            return 0
+        else:
+            return op0 * op1
+
+    def add_ops(op0, op1):
+        if op0 is 0:
+            return op1
+        elif op1 is 0:
+            return op0
+        else:
+            return op0 + op1
+
+    # function starts here
+    if not hasattr(f, '_tmp_product'):
+        f._tmp_product = {}
+    elif i_f_ops in f._tmp_product:
+        return f._tmp_product[i_f_ops]
+
+    if i_f_ops == 0:  # I got to the bottom
+        if u is f:
+            product = sp.eye(u.size, u.size)
+        else:
+            product = 0
+    else:
+        op = f._ops[i_f_ops - 1]
+        if len(op) == 1:  # self operation
+            multiplier = op[0]
+            multiplier1 = _diff_recurse(f, u, i_f_ops - 1)
+            product = multiply_ops(multiplier, multiplier1)
+        else:
+            other, i_other_ops, multiplier = op
+            multiplier1 = _diff_recurse(other, u, i_other_ops)
+            other_diff = multiply_ops(multiplier, multiplier1)
+            this_diff = _diff_recurse(f, u, i_f_ops - 1)
+            product = add_ops(this_diff, other_diff)
+
+    f._tmp_product[i_f_ops] = product
+    return product
 
 
 # =========================================================== #
@@ -573,8 +613,10 @@ class _OperationsTest(unittest.TestCase):
         a = random(N)
         b = random(N)
         c = a * b * 5
-        self.assertEqual(0, (c.diff(a) - 5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
-        self.assertEqual(0, (c.diff(b) - 5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
+        self.assertEqual(0,
+                (c.diff(a) - 5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
+        self.assertEqual(0,
+                (c.diff(b) - 5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
 
     def testDiv(self):
         N = 10
@@ -635,8 +677,9 @@ class _Poisson1dTest(unittest.TestCase):
         dRdu = res.diff(u)
         print(time.clock() - t0)
 
-        lapl = -2 * sp.eye(N-1,N-1) + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
-                                + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
+        lapl = -2 * sp.eye(N-1,N-1) \
+             + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
+             + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
         lapl /= dx**2
         self.assertEqual((dRdu - lapl).nnz, 0)
 
@@ -682,10 +725,12 @@ class _Poisson2dTest(unittest.TestCase):
         dRdu = res.diff(u)
         print(time.clock() - t0)
 
-        lapl_i = -2 * sp.eye(N-1,N-1) + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
-                                  + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
-        lapl_j = -2 * sp.eye(M-1,M-1) + sp.dia_matrix((np.ones(M-1), 1), (M-1,M-1)) \
-                                  + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
+        lapl_i = -2 * sp.eye(N-1,N-1) \
+               + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
+               + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
+        lapl_j = -2 * sp.eye(M-1,M-1) \
+               + sp.dia_matrix((np.ones(M-1), 1), (M-1,M-1)) \
+               + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
         lapl = sp.kron(lapl_i, sp.eye(M-1,M-1)) / dx**2 \
              + sp.kron(sp.eye(N-1,N-1), lapl_j) / dy**2
         self.assertEqual((dRdu - lapl).nnz, 0)
@@ -732,21 +777,27 @@ class _Poisson3dTest(unittest.TestCase):
         dRdf = res.diff(f)
         print(time.clock() - t0)
 
-        self.assertEqual((dRdf - sp.eye((N-1) * (M-1) * (L-1), (N-1) * (M-1) * (L-1))).nnz, 0)
+        self.assertEqual((dRdf - sp.eye(*dRdf.shape)).nnz, 0)
 
         t0 = time.clock()
         dRdu = res.diff(u)
         print(time.clock() - t0)
 
-        lapl_i = -2 * sp.eye(N-1, N-1) + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
-                                  + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
-        lapl_j = -2 * sp.eye(M-1, M-1) + sp.dia_matrix((np.ones(M-1), 1), (M-1,M-1)) \
-                                  + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
-        lapl_k = -2 * sp.eye(L-1, L-1) + sp.dia_matrix((np.ones(L-1), 1), (L-1,L-1)) \
-                                  + sp.dia_matrix((np.ones(L-1), -1), (L-1,L-1))
-        lapl = sp.kron(sp.kron(lapl_i, sp.eye(M-1, M-1)), sp.eye(L-1, L-1)) / dx**2 \
-             + sp.kron(sp.kron(sp.eye(N-1, N-1), lapl_j), sp.eye(L-1, L-1)) / dy**2 \
-             + sp.kron(sp.kron(sp.eye(N-1, N-1), sp.eye(M-1, M-1)), lapl_k) / dz**2
+        lapl_i = -2 * sp.eye(N-1, N-1) \
+               + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
+               + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
+        lapl_j = -2 * sp.eye(M-1, M-1) \
+               + sp.dia_matrix((np.ones(M-1), 1), (M-1,M-1)) \
+               + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
+        lapl_k = -2 * sp.eye(L-1, L-1) \
+               + sp.dia_matrix((np.ones(L-1), 1), (L-1,L-1)) \
+               + sp.dia_matrix((np.ones(L-1), -1), (L-1,L-1))
+        I_i = sp.eye(N-1, N-1)
+        I_j = sp.eye(M-1, M-1)
+        I_k = sp.eye(L-1, L-1)
+        lapl = sp.kron(sp.kron(lapl_i, I_j), I_k) / dx**2 \
+             + sp.kron(sp.kron(I_i, lapl_j), I_k) / dy**2 \
+             + sp.kron(sp.kron(I_i, I_j), lapl_k) / dz**2
         self.assertEqual((dRdu - lapl).nnz, 0)
 
         # pylab.figure()

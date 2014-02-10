@@ -59,11 +59,11 @@ def cavity(u_and_p, u_and_p0, dt):
     u_xy_n = u_x_n * u_y_n
 
     # compute derivatives
-    du_xx_dx = (u_xx_c[1:,:] - u_xx_c[:-1,:]) / (2 * dx)
-    du_yy_dy = (u_yy_c[:,1:] - u_yy_c[:,:-1]) / (2 * dy)
+    du_xx_dx = (u_xx_c[1:,:] - u_xx_c[:-1,:]) /  dx
+    du_yy_dy = (u_yy_c[:,1:] - u_yy_c[:,:-1]) /  dy
 
-    du_xy_dx = (u_xy_n[1:,1:-1] - u_xy_n[:-1,1:-1]) / (2 * dx)
-    du_xy_dy = (u_xy_n[1:-1,1:] - u_xy_n[1:-1,:-1]) / (2 * dy)
+    du_xy_dx = (u_xy_n[1:,1:-1] - u_xy_n[:-1,1:-1]) / dx
+    du_xy_dy = (u_xy_n[1:-1,1:] - u_xy_n[1:-1,:-1]) / dy
     
     dp_dx = (p[1:,:] - p[:-1,:]) / dx
     dp_dy = (p[:,1:] - p[:,:-1]) / dy

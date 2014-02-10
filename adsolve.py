@@ -4,6 +4,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
 from adarray import *
+from adarray import _diff_recurse, _clear_tmp_product
 
 class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton=0):
@@ -14,17 +15,23 @@ class adsolution(adarray):
         self._res_norm = np.linalg.norm(residual._base)
         self._res_diff_solulion = residual.diff(solution)
 
-    def adjoint(self, functional, u):
+    def adjoint(self, functional, s):
         assert functional.size == self.size
         J_u = self._res_diff_solulion.tocsc()
-        J_s = self._residual._diff_recurse(u, self._residual_ops)
+
+        _clear_tmp_product(self._residual, self._residual_ops)
+        J_s = _diff_recurse(self._residual, s, self._residual_ops)
+
         c_residual = splinalg.spsolve(J_u.T, base(functional).ravel(),
                                       use_umfpack=False)
-        return -(J_s.T * c_residual).reshape(u.shape)
+        return -(J_s.T * c_residual).reshape(s.shape)
 
     def tangent(self, u):
         J_u = self._res_diff_solulion.tocsr()
-        J_s = self._residual._diff_recurse(u, self._residual_ops)
+
+        _clear_tmp_product(self._residual, self._residual_ops)
+        J_s = _diff_recurse(self._residual, u, self._residual_ops)
+
         d_self_du = -splinalg.spsolve(J_u, J_s, use_umfpack=False)
         return d_self_du.reshape(self.shape + u.shape)
 
