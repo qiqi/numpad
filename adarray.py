@@ -82,13 +82,13 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
 
 # --------------------- algebraic functions --------------------- #
 
-def maximum(a, b):
-    a_gt_b = a > b
-    return a * a_gt_b + b * (1. - a_gt_b)
-
-def minimum(a, b):
-    a_gt_b = a > b
-    return b * a_gt_b + a * (1. - a_gt_b)
+# def maximum(a, b):
+#     a_gt_b = a > b
+#     return a * a_gt_b + b * (1. - a_gt_b)
+# 
+# def minimum(a, b):
+#     a_gt_b = a > b
+#     return b * a_gt_b + a * (1. - a_gt_b)
 
 def exp(x, out=None):
     if isinstance(x, (numbers.Number, np.ndarray)):
@@ -284,26 +284,26 @@ class adarray:
 
     # ------------------ boolean operations ----------------- #
 
-    def __eq__(self, a):
-        return array(self._base == base(a))
-
-    def __ne__(self, a):
-        return array(self._base != base(a))
-
-    def __gt__(self, a):
-        return array(self._base > base(a))
-    
-    def __ge__(self, a):
-        return array(self._base >= base(a))
-
-    def __lt__(self, a):
-        return array(self._base < base(a))
-    
-    def __le__(self, a):
-        return array(self._base <= base(a))
-
-    def all(self):
-        return self._base.all()
+#     def __eq__(self, a):
+#         return array(self._base == base(a))
+# 
+#     def __ne__(self, a):
+#         return array(self._base != base(a))
+# 
+#     def __gt__(self, a):
+#         return array(self._base > base(a))
+#     
+#     def __ge__(self, a):
+#         return array(self._base >= base(a))
+# 
+#     def __lt__(self, a):
+#         return array(self._base < base(a))
+#     
+#     def __le__(self, a):
+#         return array(self._base <= base(a))
+# 
+#     def all(self):
+#         return self._base.all()
 
     # ------------------ arithmetic operations ----------------- #
 
