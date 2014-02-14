@@ -240,9 +240,10 @@ class adarray:
         '''
         Add graph link pointing to other -- x += multiplier * other
         '''
-        if not isinstance(multiplier, numbers.Number):
-            assert multiplier.shape == (self.size, other.size)
-        self._ops.append((other, other.i_ops(), multiplier))
+        if multiplier is not 0:
+            if not isinstance(multiplier, numbers.Number):
+                assert multiplier.shape == (self.size, other.size)
+            self._ops.append((other, other.i_ops(), multiplier))
 
     def self_ops(self, multiplier):
         '''
