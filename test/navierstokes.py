@@ -64,7 +64,7 @@ def primative(w):
 
 def grad_dual(phi, geo):
     '''
-    Gradient assuming zero boundary conditions
+    Gradient on the nodes assuming zero boundary conditions
     '''
     dxy_i = 0.5 * (geo.dxy_i[:,1:,:] + geo.dxy_i[:,:-1,:])
     dxy_j = 0.5 * (geo.dxy_j[:,:,1:] + geo.dxy_j[:,:,:-1])
@@ -121,7 +121,7 @@ def ns_kec(w, w0, geo, dt):
     E_j = 0.5 * (E[1:-1,1:] + E[1:-1,:-1])
     p_i = 0.5 * (p[1:,1:-1] + p[:-1,1:-1])
     p_j = 0.5 * (p[1:-1,1:] + p[1:-1,:-1])
-    # interface strain rate averged from dual mesh values
+    # interface strain rate averged from dual mesh (nodal) values
     duv_dxy_i = 0.5 * (duv_dxy[:,:,1:] + duv_dxy[:,:,:-1])
     duv_dxy_j = 0.5 * (duv_dxy[:,1:,:] + duv_dxy[:,:-1,:])
     # inlet and outlet have no viscous stress
@@ -163,18 +163,22 @@ def vis(w, geo):
     '''
     Visualize Mach number, non-dimensionalized stagnation and static pressure
     '''
+    def avg(a):
+        return 0.25 * (a[1:,1:] + a[1:,:-1] + a[:-1,1:] + a[:-1,:-1])
+
     import numpy as np
-    rho, u, v, E, p = primative(base(extend(w, geo)[:,1:-1,1:-1]))
-    x, y = base(geo.xyc)
+    rho, u, v, E, p = primative(base(extend(w, geo)))
+    x, y = base(geo.xy)
+    xc, yc = base(geo.xyc)
     
     c2 = 1.4 * p / rho
     M = sqrt((u**2 + v**2) / c2)
     pt = p * (1 + 0.2 * M**2)**3.5
 
     subplot(2,2,1)
-    contourf(x, y, M, 100)
+    contourf(x, y, avg(M), 100)
     colorbar()
-    quiver(x, y, u, v)
+    quiver(xc, yc, u[1:-1,1:-1], v[1:-1,1:-1])
     axis('scaled')
     xlabel('x')
     ylabel('y')
@@ -183,7 +187,7 @@ def vis(w, geo):
     
     subplot(2,2,2)
     pt_frac = (pt - p_out) / (pt_in - p_out)
-    contourf(x, y, pt_frac, 100)
+    contourf(x, y, avg(pt_frac), 100)
     colorbar()
     axis('scaled')
     xlabel('x')
@@ -193,7 +197,7 @@ def vis(w, geo):
     
     subplot(2,2,3)
     p_frac = (p - p_out) / (pt_in - p_out)
-    contourf(x, y, p_frac, 100)
+    contourf(x, y, avg(p_frac), 100)
     colorbar()
     axis('scaled')
     xlabel('x')
@@ -203,14 +207,31 @@ def vis(w, geo):
 
 
 # ---------------------- time integration --------------------- #
-Ni, Nj = 50, 20
-x = np.linspace(-15,25,Ni+1)
-y = np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
-a = np.ones(Ni+1)
-a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.2
+geometry = 'nozzle'
 
-y, x = np.meshgrid(y, x)
-y *= 5 * a[:,np.newaxis]
+if geometry == 'nozzle':
+    Ni, Nj = 50, 20
+    x = np.linspace(-15,25,Ni+1)
+    y = np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
+    a = np.ones(Ni+1)
+    a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.2
+    
+    y, x = np.meshgrid(y, x)
+    y *= 5 * a[:,np.newaxis]
+
+elif geometry == 'bend':
+    Ni, Nj = 100, 20
+    theta = np.linspace(0, pi, Ni/2+1)
+    r = 15 + 5 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
+    r, theta = np.meshgrid(r, theta)
+    x, y = r * sin(theta), r * cos(theta)
+
+    dx = 15 * 2 * pi / Ni
+    y0, y1 = y[0,:], y[-1,:]
+    y0, x0 = np.meshgrid(y0, dx * np.arange(-Ni/4, 0))
+    y1, x1 = np.meshgrid(y1, -dx * np.arange(1, 1 + Ni/4))
+    
+    x, y = np.vstack([x0, x, x1]), np.vstack([y0, y, y1])
 
 geo = geo2d([x, y])
 
@@ -244,9 +265,10 @@ for i in range(20):
 
     # if i % 10 == 0:
     #     vis(w, geo)
+    #     show(block=True)
 
 print("It'll never converge!")
 figure(figsize=(16,9))
 vis(w, geo)
-savefig('navier-stokes.png')
+savefig('navierstokes-{0}.png'.format(geometry))
 show(block=True)
