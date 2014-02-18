@@ -208,13 +208,13 @@ def vis(w, geo):
 
 # ---------------------- time integration --------------------- #
 Ni, Nj = 50, 20
-x = np.linspace(-20,20,Ni+1)
-y = np.linspace(-5, 5, Nj+1)
+x = np.linspace(-15,25,Ni+1)
+y = np.sin(np.linspace(-pi/2, pi/2, Nj+1))
 a = np.ones(Ni+1)
-a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.1
+a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.2
 
 y, x = np.meshgrid(y, x)
-y *= a[:,np.newaxis]
+y *= 5 * a[:,np.newaxis]
 
 geo = geo2d([x, y])
 
@@ -230,7 +230,7 @@ w[3] = 1E5 / (1.4 - 1)
 
 w0 = ravel(w)
 
-for i in range(100):
+for i in range(20):
     print('i = ', i, 't = ', t)
     w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
     if w._n_Newton == 1:
@@ -246,10 +246,7 @@ for i in range(100):
     t += dt
     w0.obliviate()
 
-    if i % 10 == 0:
-        vis(w, geo)
+    # if i % 10 == 0:
+    #     vis(w, geo)
 
-print('Final, t = inf')
-dt = np.inf
-w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
 vis(w, geo)
