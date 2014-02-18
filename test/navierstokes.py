@@ -1,5 +1,6 @@
 import time
 import sys
+from pylab import *
 sys.path.append('..')
 from adarray import *
 from adsolve import *
@@ -166,14 +167,10 @@ def vis(w, geo):
     rho, u, v, E, p = primative(base(extend(w, geo)[:,1:-1,1:-1]))
     x, y = base(geo.xyc)
     
-    from pylab import figure, subplot, contourf, colorbar, \
-            quiver, axis, xlabel, ylabel, draw, show, title
-
     c2 = 1.4 * p / rho
     M = sqrt((u**2 + v**2) / c2)
     pt = p * (1 + 0.2 * M**2)**3.5
 
-    figure()
     subplot(2,2,1)
     contourf(x, y, M, 100)
     colorbar()
@@ -204,12 +201,11 @@ def vis(w, geo):
     title('p')
     draw()
 
-    show(block=True)
 
 # ---------------------- time integration --------------------- #
 Ni, Nj = 50, 20
 x = np.linspace(-15,25,Ni+1)
-y = np.sin(np.linspace(-pi/2, pi/2, Nj+1))
+y = np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
 a = np.ones(Ni+1)
 a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.2
 
@@ -249,4 +245,8 @@ for i in range(20):
     # if i % 10 == 0:
     #     vis(w, geo)
 
+print("It'll never converge!")
+figure(figsize=(16,9))
 vis(w, geo)
+savefig('navier-stokes.png')
+show(block=True)
