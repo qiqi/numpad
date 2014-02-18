@@ -35,13 +35,21 @@ class adsolution(adarray):
         d_self_du = -splinalg.spsolve(J_u, J_s, use_umfpack=False)
         return d_self_du.reshape(self.shape + u.shape)
 
+    def obliviate(self):
+        del self._residual
+        del self._residual_ops
+        del self._n_Newton
+        del self._res_norm
+        del self._res_diff_solulion
+
+
 
 def solve(func, u0, args=(), kargs={},
-          max_iter=8, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
-    u = adarray(base(u0.copy()))
+          max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
+    u = adarray(base(u0).copy())
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
-        res_norm = np.linalg.norm(res._base)
+        res_norm = np.linalg.norm(res._base, np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
         if i_Newton == 0:

@@ -90,6 +90,23 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
 #     a_gt_b = a > b
 #     return b * a_gt_b + a * (1. - a_gt_b)
 
+def sigmoid(x):
+    a = exp(-2 * x)
+    return 1 / (1 + a)
+
+def gt_smooth(a, b, c=0.1):
+    return sigmoid((a - b) / c)
+
+def lt_smooth(a, b, c=0.1):
+    return sigmoid((b - a) / c)
+
+def maximum_smooth(a, b, c=0.1):
+    a_gt_b = gt_smooth(a, b, c)
+    return a * a_gt_b + b * (1. - a_gt_b)
+
+def minimum_smooth(a, b, c=0.1):
+    return -maximum_smooth(-a, -b, c)
+
 def exp(x, out=None):
     if isinstance(x, (numbers.Number, np.ndarray)):
         return np.exp(x, out)
@@ -99,7 +116,8 @@ def exp(x, out=None):
         else:
             np.exp(x._base, out._base)
             out.self_ops(0)
-        multiplier = sp.dia_matrix((np.exp(x._base), 0), (x.size, x.size))
+        multiplier = sp.dia_matrix((np.exp(ravel(x._base)), 0),
+                                   (x.size, x.size))
         out.add_ops(x, multiplier)
 
         if __DEBUG_MODE__:
@@ -109,6 +127,42 @@ def exp(x, out=None):
 
 def sqrt(x):
     return x**(0.5)
+
+def sin(x, out=None):
+    if isinstance(x, (numbers.Number, np.ndarray)):
+        return np.sin(x, out)
+    else:
+        if out is None:
+            out = adarray(np.sin(x._base))
+        else:
+            np.sin(x._base, out._base)
+            out.self_ops(0)
+        multiplier = sp.dia_matrix((np.cos(ravel(x._base)), 0),
+                                   (x.size, x.size))
+        out.add_ops(x, multiplier)
+
+        if __DEBUG_MODE__:
+            out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb(x)
+            _DEBUG_check(out)
+        return out
+
+def cos(x, out=None):
+    if isinstance(x, (numbers.Number, np.ndarray)):
+        return np.cos(x, out)
+    else:
+        if out is None:
+            out = adarray(np.cos(x._base))
+        else:
+            np.cos(x._base, out._base)
+            out.self_ops(0)
+        multiplier = sp.dia_matrix((-np.sin(ravel(x._base)), 0),
+                                   (x.size, x.size))
+        out.add_ops(x, multiplier)
+
+        if __DEBUG_MODE__:
+            out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb(x)
+            _DEBUG_check(out)
+        return out
 
 # ------------------ copy, stack, transpose operations ------------------- #
 
@@ -203,6 +257,27 @@ def meshgrid(x, y):
     ind_xx, ind_yy = np.meshgrid(x._ind, y._ind)
     return x[ind_xx], y[ind_yy]
 
+def sum(a, axis=None, dtype=None, out=None, keepdims=False):
+    assert dtype is None and out is None
+    a = array(a)
+    sum_a = adarray(np.sum(a._base, axis, keepdims=keepdims))
+
+    shape = np.sum(a._base, axis, keepdims=True).shape
+    j = np.arange(sum_a.size).reshape(shape)
+    i = np.ravel(j + np.zeros_like(a._base, int))
+    j = np.ravel(a._ind)
+    data = np.ones(i.size, int)
+    multiplier = sp.csr_matrix((data, (i, j)), shape=(sum_a.size, a.size))
+    sum_a.add_ops(a, multiplier)
+
+    if __DEBUG_MODE__:
+        sum_a._DEBUG_perturb = np.sum(a._DEBUG_perturb, axis, keepdims=keepdims)
+        _DEBUG_check(stacked_array)
+    return sum_a
+
+def mean(a, axis=None, dtype=None, out=None, keepdims=False):
+    sum_a = sum(a, axis, dtype, out, keepdims)
+    return sum_a * (float(sum_a.size) / a.size)
 
 # ===================== the adarray class ====================== #
 
@@ -345,6 +420,9 @@ class adarray:
             neg_self._DEBUG_perturb = -_DEBUG_perturb(self)
             _DEBUG_check(neg_self)
         return neg_self
+
+    def __pos__(self):
+        return self
         
     def __sub__(self, a):
         return self.__add__(-a)
@@ -436,6 +514,12 @@ class adarray:
             _DEBUG_check(self_to_a)
         return self_to_a
     
+    def sum(self, axis=None, dtype=None, out=None):
+        return sum(self, axis, dtype=None, out=None)
+
+    def mean(self, axis=None, dtype=None, out=None):
+        return mean(self, axis, dtype=None, out=None)
+
     # ------------------ indexing ----------------- #
 
     def __getitem__(self, ind):
@@ -640,6 +724,39 @@ class _OperationsTest(unittest.TestCase):
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
+    def testExp(self):
+        N = 10
+        a = random(N)
+        c = exp(a)
+        discrepancy = c.diff(a) - sp.dia_matrix((exp(a._base), 0), (N,N))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+    def testSinCos(self):
+        N = 10
+        a = random(N)
+        b = sin(a)
+        c = cos(a)
+        discrepancy = b.diff(a) - sp.dia_matrix((cos(a._base), 0), (N,N))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+        discrepancy = c.diff(a) + sp.dia_matrix((sin(a._base), 0), (N,N))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+    def testSum(self):
+        M, N = 4, 10
+        a = random([M, N])
+        b = sum(a, 0)
+        c = sum(a, 1)
+
+        discrepancy = b.diff(a) - sp.kron(np.ones([1,M]), sp.eye(N, N))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+        discrepancy = c.diff(a) - sp.kron(sp.eye(M,M), np.ones([1, N]))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
 
 class _Poisson1dTest(unittest.TestCase):
     def residual(self, u, f, dx):
@@ -809,9 +926,10 @@ class _Burgers1dTest(unittest.TestCase):
     def firstOrderFlux(self, u):
         u = hstack([0, u, 0])
         f = u**2 / 2
-        f_max = maximum(f[1:], f[:-1])
-        f_min = minimum(0, minimum(f[1:], f[:-1]))
-        return (u[1:] <= u[:-1]) * f_max + (u[1:] > u[:-1]) * f_min
+        f_max = maximum_smooth(f[1:], f[:-1])
+        f_min = minimum_smooth(0, minimum_smooth(f[1:], f[:-1]))
+        return lt_smooth(u[1:], u[:-1]) * f_max + \
+               gt_smooth(u[1:], u[:-1]) * f_min
 
     def testFirstOrderResidual(self):
         N = 4096
