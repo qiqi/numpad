@@ -1,5 +1,3 @@
-import sys
-sys.path.append('..')
 from cavity import *
 
 print('Solving the adjoint')

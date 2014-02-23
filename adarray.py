@@ -6,16 +6,25 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
 
+# __all__ = ['base', 'zeros', 'ones', 'random', 'linspace', 'loadtxt',
+# 'sigmoid', 'gt_smooth', 'lt_smooth', 'maximum_smooth', 'minimum_smooth',
+# ]
+
 # --------------------- debug --------------------- #
 
 __DEBUG_MODE__ = False
 __DEBUG_TOL__ = None
 __DEBUG_SEED_ARRAYS__ = []
 
-def _DEBUG_mode(mode=True, tolerance=None):
+def _DEBUG_enable(enable=True, tolerance=1E-9):
+    '''
+    Turn __DEBUG_MODE__ on.
+    All variables generate random perturbations, all operations verify against
+    these perturbations (with given tolerance)
+    '''
     global __DEBUG_MODE__, __DEBUG_TOL__
-    assert(isinstance(mode, bool))
-    __DEBUG_MODE__ = mode
+    assert(isinstance(enable, bool))
+    __DEBUG_MODE__ = enable
     __DEBUG_TOL__ = tolerance
 
 def _DEBUG_check(output, message=''):
@@ -116,7 +125,7 @@ def exp(x, out=None):
         else:
             np.exp(x._base, out._base)
             out.self_ops(0)
-        multiplier = sp.dia_matrix((np.exp(ravel(x._base)), 0),
+        multiplier = sp.dia_matrix((np.exp(np.ravel(x._base)), 0),
                                    (x.size, x.size))
         out.add_ops(x, multiplier)
 
@@ -164,12 +173,30 @@ def cos(x, out=None):
             _DEBUG_check(out)
         return out
 
+def log(x, out=None):
+    if isinstance(x, (numbers.Number, np.ndarray)):
+        return np.log(x, out)
+    else:
+        if out is None:
+            out = adarray(np.log(x._base))
+        else:
+            np.log(x._base, out._base)
+            out.self_ops(0)
+        multiplier = sp.dia_matrix((1. / ravel(x._base), 0),
+                                   (x.size, x.size))
+        out.add_ops(x, multiplier)
+
+        if __DEBUG_MODE__:
+            out._DEBUG_perturb = _DEBUG_perturb(x) / x._base
+            _DEBUG_check(out)
+        return out
+
 # ------------------ copy, stack, transpose operations ------------------- #
 
 def array(a):
     if isinstance(a, adarray):
         return a
-    elif isinstance(a, np.ndarray):
+    elif isinstance(a, (numbers.Number, np.ndarray)):
         return adarray(a)
     elif isinstance(a, (list, tuple)):
         a = list(a)
@@ -196,6 +223,7 @@ def array(a):
         return adarray_a
         
 def ravel(a):
+    a = array(a)
     return a.reshape((a.size,))
 
 def copy(a):
@@ -287,6 +315,11 @@ class adarray:
         self._ops = []
         self._ind = np.arange(self.size).reshape(self.shape)
 
+    def _ind_casted_to(self, shape):
+        ind = np.zeros(shape, dtype=int)
+        ind[:] = self._ind
+        return ind
+
     @property
     def size(self):
         return self._base.size
@@ -304,7 +337,6 @@ class adarray:
         return self._base.__len__()
 
     # -------------------- ops management ----------------- #
-
     def i_ops(self):
         '''
         Total number of dependent operations
@@ -446,16 +478,18 @@ class adarray:
                 a, b = b, a
             a_x_b = adarray(base(a) * base(b))
 
-            a_multiplier = np.asarray(np.ravel(base(b)), float)
-            b_multiplier = np.asarray(np.ravel(base(a)), float)
+            a_multiplier = np.zeros(a_x_b.shape)
+            b_multiplier = np.zeros(a_x_b.shape)
+            a_multiplier[:] = base(b)
+            b_multiplier[:] = base(a)
 
-            i = np.arange(b.size)
-            j = i % a.size
-            a_multiplier = sp.csr_matrix((a_multiplier, (i, j)))
-
-            b_multiplier = sp.kron(sp.eye(b.size / a.size, b.size / a.size),
-                                   sp.dia_matrix((b_multiplier, 0),
-                                       (b_multiplier.size, b_multiplier.size)))
+            i = np.arange(a_x_b.size)
+            j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
+            j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
+            a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
+                                         shape=(a_x_b.size, a.size))
+            b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
+                                         shape=(a_x_b.size, b.size))
 
             if not isinstance(a, np.ndarray): a_x_b.add_ops(a, a_multiplier)
             if not isinstance(b, np.ndarray): a_x_b.add_ops(b, b_multiplier)
@@ -526,10 +560,11 @@ class adarray:
         self_i = adarray(self._base[ind])
 
         j = np.ravel(self._ind[ind])
-        i = np.arange(j.size)
-        multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
-                                   shape=(j.size, self.size))
-        self_i.add_ops(self, multiplier)
+        if j.size > 0:
+            i = np.arange(j.size)
+            multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
+                                       shape=(j.size, self.size))
+            self_i.add_ops(self, multiplier)
 
         if __DEBUG_MODE__:
             self_i._DEBUG_perturb = _DEBUG_perturb(self)[ind]
@@ -545,11 +580,13 @@ class adarray:
         self._base.__setitem__(ind, base(a))
 
         if hasattr(a, '_base'):
-            i = np.ravel(self._ind[ind])
-            j = np.arange(i.size)
-            multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
-                                       shape=(self.size, a.size))
-            self.add_ops(a, multiplier)
+            i = self._ind[ind]
+            if i.size > 0:
+                j = a._ind_casted_to(i.shape)
+                i, j = np.ravel(i), np.ravel(j)
+                multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
+                                           shape=(self.size, a.size))
+                self.add_ops(a, multiplier)
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb[ind] = _DEBUG_perturb(a)

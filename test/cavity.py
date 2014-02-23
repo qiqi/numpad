@@ -25,10 +25,9 @@
 #         u_x[0,N+1]         u_x[1,N+1]         u_x[2,N+1]
 
 import sys
-sys.path.append('..')
-from adarray import *
-from adsolve import *
-            
+sys.path.append('../..')
+from numpad import *
+
 def make_array(u_and_p):
     p = u_and_p[:N*N].reshape([N, N])
     

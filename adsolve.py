@@ -1,10 +1,13 @@
+import os
+import sys
+sys.path.append(os.path.realpath('..')) # for running unittest
 import unittest
 import numbers
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
-from adarray import *
-from adarray import _diff_recurse, _clear_tmp_product
+from numpad.adarray import *
+from numpad.adarray import _diff_recurse, _clear_tmp_product
 
 class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton=0):
@@ -58,7 +61,7 @@ def solve(func, u0, args=(), kargs={},
             break
         # Newton update
         J = res.diff(u).tocsr()
-        minus_du = splinalg.spsolve(J, ravel(res._base), use_umfpack=False)
+        minus_du = splinalg.spsolve(J, np.ravel(res._base), use_umfpack=False)
         u._base -= minus_du.reshape(u.shape)
         u = adarray(u._base)  # unlink operation history if any
 

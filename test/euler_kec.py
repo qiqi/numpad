@@ -1,8 +1,7 @@
 import time
 import sys
-sys.path.append('..')
-from adarray import *
-from adsolve import *
+sys.path.append('../..')
+from numpad import *
 
 def extend(w_interior, geo):
     '''
