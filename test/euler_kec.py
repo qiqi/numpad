@@ -1,5 +1,6 @@
 import time
 import sys
+from pylab import *
 sys.path.append('..')
 from adarray import *
 from adsolve import *
@@ -15,7 +16,7 @@ def extend(w_interior, geo):
     rho, u, v, E, p = primative(w[:,1,1:-1])
     c2 = 1.4 * p / rho
     c = sqrt(c2)
-    mach2 = u**2 / c2
+    mach2 = (u**2 + v**2) / c2
     rhot = rho * (1 + 0.2 * mach2)**2.5
     pt = p * (1 + 0.2 * mach2)**3.5
 
@@ -24,10 +25,9 @@ def extend(w_interior, geo):
     d_u = d_pt / (rho * (u + c))
     d_p = rho * c * d_u
 
-    relax = 0.5
-    rho = rho + relax * d_rho
-    u = u + relax * d_u
-    p = p + relax * d_p
+    rho = rho + d_rho
+    u = u + d_u
+    p = p + d_p
     w[0,0,1:-1] = rho
     w[1,0,1:-1] = rho * u
     w[2,0,1:-1] = 0
@@ -36,17 +36,20 @@ def extend(w_interior, geo):
     # outlet
     w[:,-1,1:-1] = w[:,-2,1:-1]
     rho, u, v, E, p = primative(w[:,-1,1:-1])
-    p = relax * p_out + (1 - relax) * p
-    w[3,-1,1:-1] = p / (1.4 - 1) + 0.5 * rho * (u**2 + v**2)
+    w[3,-1,1:-1] = p_out / (1.4 - 1) + 0.5 * rho * (u**2 + v**2)
 
     # walls
     w[:,:,0] = w[:,:,1]
-    rhoU_n = sum(w[1:3,1:-1,0] * geo.normal_j[:,:,0], 0)
-    w[1:3,1:-1,0] -= 2 * rhoU_n * geo.normal_j[:,:,0]
+    nwall = geo.normal_j[:,:,0]
+    nwall = hstack([nwall[:,:1], nwall, nwall[:,-1:]])
+    rhoU_n = sum(w[1:3,:,0] * nwall, 0)
+    w[1:3,:,0] -= 2 * rhoU_n * nwall
 
     w[:,:,-1] = w[:,:,-2]
-    rhoU_n = sum(w[1:3,1:-1,-1] * geo.normal_j[:,:,-1], 0)
-    w[1:3,1:-1,-1] -= 2 * rhoU_n * geo.normal_j[:,:,-1]
+    nwall = geo.normal_j[:,:,-1]
+    nwall = hstack([nwall[:,:1], nwall, nwall[:,-1:]])
+    rhoU_n = sum(w[1:3,:,-1] * nwall, 0)
+    w[1:3,:,-1] -= 2 * rhoU_n * nwall
 
     return w
     
@@ -116,45 +119,45 @@ class geo2d:
         
 
 # ----------------------- visualization --------------------------- #
+def avg(a):
+    return 0.25 * (a[1:,1:] + a[1:,:-1] + a[:-1,1:] + a[:-1,:-1])
+
 def vis(w, geo):
     '''
     Visualize Mach number, non-dimensionalized stagnation and static pressure
     '''
     import numpy as np
-    rho, u, v, E, p = primative(base(extend(w, geo)[:,1:-1,1:-1]))
-    x, y = base(geo.xyc)
+    rho, u, v, E, p = primative(base(extend(w, geo)))
+    x, y = base(geo.xy)
+    xc, yc = base(geo.xyc)
     
-    from pylab import figure, subplot, contourf, colorbar, \
-            quiver, axis, xlabel, ylabel, draw, show, title
-
     c2 = 1.4 * p / rho
     M = sqrt((u**2 + v**2) / c2)
     pt = p * (1 + 0.2 * M**2)**3.5
 
-    figure()
-    subplot(2,2,1)
-    contourf(x, y, M, 100)
+    subplot(1,2,1)
+    contourf(x, y, avg(M), 100)
     colorbar()
-    quiver(x, y, u, v)
+    quiver(xc, yc, u[1:-1,1:-1], v[1:-1,1:-1])
     axis('scaled')
     xlabel('x')
     ylabel('y')
     title('Mach')
     draw()
     
-    subplot(2,2,2)
-    pt_frac = (pt - p_out) / (pt_in - p_out)
-    contourf(x, y, pt_frac, 100)
-    colorbar()
-    axis('scaled')
-    xlabel('x')
-    ylabel('y')
-    title('pt')
-    draw()
+    # subplot(2,2,2)
+    # pt_frac = (pt - p_out) / (pt_in - p_out)
+    # contourf(x, y, avg(pt_frac), 100)
+    # colorbar()
+    # axis('scaled')
+    # xlabel('x')
+    # ylabel('y')
+    # title('pt')
+    # draw()
     
-    subplot(2,2,3)
-    p_frac = (p - p_out) / (pt_in - p_out)
-    contourf(x, y, p_frac, 100)
+    subplot(1,2,2)
+    p_frac = (p - p_out) / (0.5 * rho[0,0] * u[0,0]**2)
+    contourf(x, y, avg(p_frac), 100)
     colorbar()
     axis('scaled')
     xlabel('x')
@@ -162,23 +165,41 @@ def vis(w, geo):
     title('p')
     draw()
 
-    show(block=True)
-
 # ---------------------- time integration --------------------- #
-Ni, Nj = 50, 20
-x = np.linspace(-20,20,Ni+1)
-y = np.linspace(-5, 5, Nj+1)
-a = np.ones(Ni+1)
-a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.1
+geometry = 'bend'
 
-y, x = np.meshgrid(y, x)
-y *= a[:,np.newaxis]
+if geometry == 'nozzle':
+    Ni, Nj = 50, 20
+    x = np.linspace(-20,20,Ni+1)
+    y = np.linspace(-5, 5, Nj+1)
+    a = np.ones(Ni+1)
+    a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.1
+    
+    y, x = np.meshgrid(y, x)
+    y *= a[:,np.newaxis]
+
+elif geometry == 'bend':
+    Ni, Nj = 100, 20
+    # Ni, Nj = 200, 40
+    theta = np.linspace(0, pi/2, Ni/5+1)
+    r = 15 + 8 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
+    r, theta = np.meshgrid(r, theta)
+    x, y = r * sin(theta), r * cos(theta)
+
+    dx = 16 / Nj
+    y0 = y[0,:]
+    y0, x0 = np.meshgrid(y0, dx * np.arange(-Ni*2/5, 0))
+
+    x1 = x[-1,:]
+    x1, y1 = np.meshgrid(x1, -dx * np.arange(1, 1 + Ni*2/5))
+    
+    x, y = np.vstack([x0, x, x1]), np.vstack([y0, y, y1])
 
 geo = geo2d([x, y])
 
 t, dt = 0, 0.1
 
-pt_in = 1.2E5
+pt_in = 1.05E5
 p_out = 1E5
 
 w = zeros([4, Ni, Nj])
@@ -209,4 +230,8 @@ for i in range(100):
 print('Final, t = inf')
 dt = np.inf
 w = solve(euler_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+figure(figsize=(30,10))
 vis(w, geo)
+
+rho, u, v, E, p = [base(pi) for pi in primative(extend(w, geo))]
+

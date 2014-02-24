@@ -211,6 +211,7 @@ geometry = 'nozzle'
 
 if geometry == 'nozzle':
     Ni, Nj = 50, 20
+    # Ni, Nj = 100, 40
     x = np.linspace(-15,25,Ni+1)
     y = np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
     a = np.ones(Ni+1)
@@ -221,6 +222,7 @@ if geometry == 'nozzle':
 
 elif geometry == 'bend':
     Ni, Nj = 100, 20
+    # Ni, Nj = 200, 40
     theta = np.linspace(0, pi, Ni/2+1)
     r = 15 + 5 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
     r, theta = np.meshgrid(r, theta)
@@ -235,7 +237,7 @@ elif geometry == 'bend':
 
 geo = geo2d([x, y])
 
-t, dt = 0, 0.05
+t, dt = 0, 1./Nj
 
 pt_in = 1.2E5
 p_out = 1E5
