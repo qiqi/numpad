@@ -152,7 +152,7 @@ def sin(x, out=None):
         else:
             np.sin(x._base, out._base)
             out.self_ops(0)
-        multiplier = sp.dia_matrix((np.cos(ravel(x._base)), 0),
+        multiplier = sp.dia_matrix((np.cos(np.ravel(x._base)), 0),
                                    (x.size, x.size))
         out.add_ops(x, multiplier)
 
@@ -170,7 +170,7 @@ def cos(x, out=None):
         else:
             np.cos(x._base, out._base)
             out.self_ops(0)
-        multiplier = sp.dia_matrix((-np.sin(ravel(x._base)), 0),
+        multiplier = sp.dia_matrix((-np.sin(np.ravel(x._base)), 0),
                                    (x.size, x.size))
         out.add_ops(x, multiplier)
 
@@ -188,7 +188,7 @@ def log(x, out=None):
         else:
             np.log(x._base, out._base)
             out.self_ops(0)
-        multiplier = sp.dia_matrix((1. / ravel(x._base), 0),
+        multiplier = sp.dia_matrix((1. / np.ravel(x._base), 0),
                                    (x.size, x.size))
         out.add_ops(x, multiplier)
 
@@ -767,11 +767,15 @@ class _OperationsTest(unittest.TestCase):
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
-    def testExp(self):
+    def testExpLog(self):
         N = 10
         a = random(N)
         c = exp(a)
         discrepancy = c.diff(a) - sp.dia_matrix((exp(a._base), 0), (N,N))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+        c = log(a)
+        discrepancy = c.diff(a) - sp.dia_matrix((1 / a._base, 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
