@@ -1,9 +1,11 @@
-import unittest
+import os
 import sys
+sys.path.append(os.path.realpath('..')) # for running unittest
+import unittest
 import numpy as np
 import scipy.sparse as sp
-from adarray import *
-from adsolve import *
+from numpad.adarray import *
+from numpad.adsolve import *
 
 class interp:
     '''
@@ -13,7 +15,7 @@ class interp:
     y.derivative(x)           # derivative of interpolant
     '''
     def __init__(self, x0, y0, type='linear'):
-        assert (x0[1:] > x0[:-1]).all()
+        assert (base(x0)[1:] > base(x0)[:-1]).all()
         x0, y0 = array(x0), array(y0)
         self.x0 = x0.copy()
         if type == 'linear':
@@ -85,7 +87,7 @@ class SanityCheck(unittest.TestCase):
 
         yp0 = base(y.y0[:,1])
         yp1 = base(y.derivative(x))
-        yp2 = diag(y(x).diff(x).todense())
+        yp2 = np.diag(y(x).diff(x).todense())
         self.assertAlmostEqual(abs(yp1 - yp0).max(), 0)
         self.assertAlmostEqual(abs(yp2 - yp0).max(), 0)
 
