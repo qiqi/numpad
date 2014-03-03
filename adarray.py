@@ -203,7 +203,9 @@ def array(a):
     if isinstance(a, adarray):
         return a
     elif isinstance(a, (numbers.Number, np.ndarray)):
-        return adarray(a)
+        a = adarray(a)
+        _DEBUG_new_perturb(a)
+        return a
     elif isinstance(a, (list, tuple)):
         a = list(a)
         # recursively convert subcomponents into adarrays
@@ -306,7 +308,7 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
 
     if __DEBUG_MODE__:
         sum_a._DEBUG_perturb = np.sum(a._DEBUG_perturb, axis, keepdims=keepdims)
-        _DEBUG_verify(stacked_array)
+        _DEBUG_verify(sum_a)
     return sum_a
 
 def mean(a, axis=None, dtype=None, out=None, keepdims=False):
@@ -323,7 +325,10 @@ class adarray:
 
     def _ind_casted_to(self, shape):
         ind = np.zeros(shape, dtype=int)
-        ind[:] = self._ind
+        if ind.ndim:
+            ind[:] = self._ind
+        else:
+            ind = self._ind
         return ind
 
     @property
@@ -377,6 +382,8 @@ class adarray:
     def reshape(self, shape):
         reshaped = adarray(self._base.reshape(shape))
         reshaped.add_ops(self, sp.eye(self.size,self.size))
+        if __DEBUG_MODE__:
+            reshaped._DEBUG_perturb = self._DEBUG_perturb.reshape(shape)
         return reshaped
 
     def sort(self, axis=-1, kind='quicksort'):
@@ -422,19 +429,31 @@ class adarray:
     # ------------------ arithmetic operations ----------------- #
 
     def __add__(self, a):
-        if isinstance(a, (numbers.Number, np.ndarray)):
-            self_plus_a = adarray(self._base + a)
-            self_plus_a.add_ops(self, 1)
+        if isinstance(a, numbers.Number):
+            a_p_b = adarray(self._base + a)
+            a_p_b.add_ops(self, 1)
         else:
-            self_plus_a = adarray(self._base + a._base)
-            self_plus_a.add_ops(self, 1)
-            self_plus_a.add_ops(a, 1)
+            b = self
+            a_p_b = adarray(base(a) + base(b))
+
+            multiplier = np.ones(a_p_b.shape)
+
+            i = np.arange(a_p_b.size)
+            j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
+            j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
+            a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
+                                         shape=(a_p_b.size, a.size))
+            b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
+                                         shape=(a_p_b.size, b.size))
+
+            if not isinstance(a, np.ndarray): a_p_b.add_ops(a, a_multiplier)
+            if not isinstance(b, np.ndarray): a_p_b.add_ops(b, b_multiplier)
 
         if __DEBUG_MODE__:
-            self_plus_a._DEBUG_perturb = _DEBUG_perturb(self) \
-                                       + _DEBUG_perturb(a)
-            _DEBUG_verify(self_plus_a)
-        return self_plus_a
+            a_p_b._DEBUG_perturb = _DEBUG_perturb(self) \
+                                 + _DEBUG_perturb(a)
+            _DEBUG_verify(a_p_b)
+        return a_p_b
 
     def __radd__(self, a):
         return self.__add__(a)
@@ -480,14 +499,18 @@ class adarray:
                 _DEBUG_verify(a_x_b)
         else:
             b = self
-            if a.size > b.size:
-                a, b = b, a
             a_x_b = adarray(base(a) * base(b))
 
             a_multiplier = np.zeros(a_x_b.shape)
             b_multiplier = np.zeros(a_x_b.shape)
-            a_multiplier[:] = base(b)
-            b_multiplier[:] = base(a)
+            if a_multiplier.ndim:
+                a_multiplier[:] = base(b)
+            else:
+                a_multiplier = base(b)
+            if b_multiplier.ndim:
+                b_multiplier[:] = base(a)
+            else:
+                b_multiplier = base(a)
 
             i = np.arange(a_x_b.size)
             j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
@@ -619,14 +642,14 @@ def _clear_tmp_product(f, i_f_ops):
         if not f._tmp_product:   # empty
             del f._tmp_product
 
-        if i_f_ops > 0:
-            op = f._ops[i_f_ops - 1]
-            if len(op) == 1:  # self operation
-                _clear_tmp_product(f, i_f_ops - 1)
-            else:
-                other, i_other_ops, multiplier = op
-                _clear_tmp_product(other, i_other_ops)
-                _clear_tmp_product(f, i_f_ops - 1)
+    if i_f_ops > 0:
+        op = f._ops[i_f_ops - 1]
+        if len(op) == 1:  # self operation
+            _clear_tmp_product(f, i_f_ops - 1)
+        else:
+            other, i_other_ops, multiplier = op
+            _clear_tmp_product(other, i_other_ops)
+            _clear_tmp_product(f, i_f_ops - 1)
 
 def _diff_recurse(f, u, i_f_ops):
     def multiply_ops(op0, op1):
