@@ -16,9 +16,11 @@ __DEBUG_MODE__ = False
 __DEBUG_TOL__ = None
 __DEBUG_SEED_ARRAYS__ = []
 
-def _DEBUG_enable(enable=True, tolerance=None):
+def _DEBUG_perturb_enable(enable=True, tolerance=None):
     '''
     Turn __DEBUG_MODE__ on.
+    If you call this function, you should call it first thing after importing
+    numpad.
     All indepedent variables generate random perturbations, and all dependent
     variables propagate these perturbations.  All arithmetic operations in
     which Automatic Differentiation is performed are verified against these
@@ -30,10 +32,13 @@ def _DEBUG_enable(enable=True, tolerance=None):
     __DEBUG_MODE__ = enable
     __DEBUG_TOL__ = tolerance
 
-def _DEBUG_verify(output, message=''):
+def _DEBUG_perturb_verify(output, message=''):
     '''
-    Verify a dependent variable (output) against random perturbations.
+    If __DEBUG_MODE__ is on, verify a dependent variable "output" against
+    random perturbations, print the error norm of the discrepancy,
+    generate AssertionError if the error norm exceeds the tolerance.
     '''
+    if not __DEBUG_MODE__: return
     assert np.isfinite(output._base).all()
     out_perturb = np.zeros(output.size)
     for var, var_perturb in __DEBUG_SEED_ARRAYS__:
@@ -41,18 +46,25 @@ def _DEBUG_verify(output, message=''):
         if J is not 0:
             out_perturb += J * var_perturb
     error_norm = np.linalg.norm(out_perturb - np.ravel(output._DEBUG_perturb))
-    print('_DEBUG_verify ', message, ': ', error_norm)
+    print('_DEBUG_perturb_verify ', message, ': ', error_norm)
     if __DEBUG_TOL__:
         assert error_norm < __DEBUG_TOL__
 
-def _DEBUG_new_perturb(var):
+def _DEBUG_perturb_new(var):
+    '''
+    Generate a random perturbation for a given independent variable "var".
+    Return "var", which is now associated with the new random perturbation.
+    '''
     global __DEBUG_MODE__, __DEBUG_SEED_ARRAYS__
     if __DEBUG_MODE__:
         var._DEBUG_perturb = np.random.random(var.shape)
         __DEBUG_SEED_ARRAYS__.append((var, np.ravel(var._DEBUG_perturb.copy())))
     return var
 
-def _DEBUG_perturb(var):
+def _DEBUG_perturb_retrieve(var):
+    '''
+    Retrieve the random perturbation associated with variable "var".
+    '''
     if hasattr(var, '_DEBUG_perturb'):
         return var._DEBUG_perturb
     elif isinstance(var, adarray):
@@ -63,6 +75,11 @@ def _DEBUG_perturb(var):
 # --------------------- utilities --------------------- #
 
 def base(a):
+    '''
+    Return the "base" of an adarray "a".  The base is a numpy.ndarray
+    object containing all the data of a.
+    If a is a number of a numpy.ndarray, then return a itself.
+    '''
     if isinstance(a, (numbers.Number, np.ndarray, list)):
         return a
     else:
@@ -72,22 +89,22 @@ def base(a):
 
 def zeros(shape):
     new_array = adarray(np.zeros(shape))
-    _DEBUG_new_perturb(new_array)
+    _DEBUG_perturb_new(new_array)
     return new_array
 
 def ones(shape):
     new_array = adarray(np.ones(shape))
-    _DEBUG_new_perturb(new_array)
+    _DEBUG_perturb_new(new_array)
     return new_array
 
 def random(shape):
     new_array = adarray(np.random.random(shape))
-    _DEBUG_new_perturb(new_array)
+    _DEBUG_perturb_new(new_array)
     return new_array
 
-def linspace(start, stop, num=50, endpoint=True, retstep=False):
-    new_array = adarray(np.linspace(start, stop, num, endpoint, retstep))
-    _DEBUG_new_perturb(new_array)
+def linspace(start, stop, num=50, endpoint=True):
+    new_array = adarray(np.linspace(start, stop, num, endpoint))
+    _DEBUG_perturb_new(new_array)
     return new_array
 
 def loadtxt(fname, dtype=float, comments='#', delimiter=None,
@@ -106,6 +123,10 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
 #     return b * a_gt_b + a * (1. - a_gt_b)
 
 def sigmoid(x):
+    '''
+    Todo: how to supress numpy warning messages when a is inf?
+    This doesn't affect result because 1/inf = 0
+    '''
     a = exp(-2 * x)
     return 1 / (1 + a)
 
@@ -136,8 +157,8 @@ def exp(x, out=None):
         out.add_ops(x, multiplier)
 
         if __DEBUG_MODE__:
-            out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb(x)
-            _DEBUG_verify(out)
+            out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb_retrieve(x)
+            _DEBUG_perturb_verify(out)
         return out
 
 def sqrt(x):
@@ -157,8 +178,8 @@ def sin(x, out=None):
         out.add_ops(x, multiplier)
 
         if __DEBUG_MODE__:
-            out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb(x)
-            _DEBUG_verify(out)
+            out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb_retrieve(x)
+            _DEBUG_perturb_verify(out)
         return out
 
 def cos(x, out=None):
@@ -175,8 +196,8 @@ def cos(x, out=None):
         out.add_ops(x, multiplier)
 
         if __DEBUG_MODE__:
-            out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb(x)
-            _DEBUG_verify(out)
+            out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb_retrieve(x)
+            _DEBUG_perturb_verify(out)
         return out
 
 def log(x, out=None):
@@ -193,8 +214,8 @@ def log(x, out=None):
         out.add_ops(x, multiplier)
 
         if __DEBUG_MODE__:
-            out._DEBUG_perturb = _DEBUG_perturb(x) / x._base
-            _DEBUG_verify(out)
+            out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._base
+            _DEBUG_perturb_verify(out)
         return out
 
 # ------------------ copy, stack, transpose operations ------------------- #
@@ -222,9 +243,9 @@ def array(a):
         if __DEBUG_MODE__:
             _DEBUG_perturb_list = []
             for i in range(len(a)):
-                _DEBUG_perturb_list.append(_DEBUG_perturb(a[i]))
+                _DEBUG_perturb_list.append(_DEBUG_perturb_retrieve(a[i]))
             adarray_a._DEBUG_perturb = np.array(_DEBUG_perturb_list)
-            _DEBUG_verify(adarray_a)
+            _DEBUG_perturb_verify(adarray_a)
 
         return adarray_a
         
@@ -237,8 +258,8 @@ def copy(a):
     if isinstance(a, adarray):
         a_copy.add_ops(a, 1)
         if __DEBUG_MODE__:
-            a_copy._DEBUG_perturb = _DEBUG_perturb(a).copy()
-            _DEBUG_verify(a_copy)
+            a_copy._DEBUG_perturb = _DEBUG_perturb_retrieve(a).copy()
+            _DEBUG_perturb_verify(a_copy)
     else:
         assert isinstance(a, np.ndarray)
     return a_copy
@@ -252,8 +273,8 @@ def transpose(a, axes=None):
     multiplier = sp.csr_matrix((data, (np.ravel(i), np.ravel(j))))
     a_transpose.add_ops(a, multiplier)
     if __DEBUG_MODE__:
-        a_transpose._DEBUG_perturb = _DEBUG_perturb(a).T
-        _DEBUG_verify(a_transpose)
+        a_transpose._DEBUG_perturb = _DEBUG_perturb_retrieve(a).T
+        _DEBUG_perturb_verify(a_transpose)
     return a_transpose
 
 def hstack(adarrays):
@@ -279,9 +300,9 @@ def hstack(adarrays):
     if __DEBUG_MODE__:
         _DEBUG_perturb_list = []
         for array in adarrays:
-            _DEBUG_perturb_list.append(_DEBUG_perturb(array))
+            _DEBUG_perturb_list.append(_DEBUG_perturb_retrieve(array))
         stacked_array._DEBUG_perturb = np.hstack(_DEBUG_perturb_list)
-        _DEBUG_verify(stacked_array)
+        _DEBUG_perturb_verify(stacked_array)
     return stacked_array
 
 def vstack(adarrays):
@@ -306,7 +327,7 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
 
     if __DEBUG_MODE__:
         sum_a._DEBUG_perturb = np.sum(a._DEBUG_perturb, axis, keepdims=keepdims)
-        _DEBUG_verify(stacked_array)
+        _DEBUG_perturb_verify(stacked_array)
     return sum_a
 
 def mean(a, axis=None, dtype=None, out=None, keepdims=False):
@@ -393,8 +414,8 @@ class adarray:
         self.self_ops(multiplier)
 
         if __DEBUG_MODE__:
-            self._DEBUG_perturb = _DEBUG_perturb(self)[ind]
-            _DEBUG_verify(self)
+            self._DEBUG_perturb = _DEBUG_perturb_retrieve(self)[ind]
+            _DEBUG_perturb_verify(self)
 
     # ------------------ boolean operations ----------------- #
 
@@ -431,9 +452,9 @@ class adarray:
             self_plus_a.add_ops(a, 1)
 
         if __DEBUG_MODE__:
-            self_plus_a._DEBUG_perturb = _DEBUG_perturb(self) \
-                                       + _DEBUG_perturb(a)
-            _DEBUG_verify(self_plus_a)
+            self_plus_a._DEBUG_perturb = _DEBUG_perturb_retrieve(self) \
+                                       + _DEBUG_perturb_retrieve(a)
+            _DEBUG_perturb_verify(self_plus_a)
         return self_plus_a
 
     def __radd__(self, a):
@@ -447,16 +468,16 @@ class adarray:
             self.add_ops(a, 1)
 
         if __DEBUG_MODE__:
-            self._DEBUG_perturb += _DEBUG_perturb(a)
-            _DEBUG_verify(self)
+            self._DEBUG_perturb += _DEBUG_perturb_retrieve(a)
+            _DEBUG_perturb_verify(self)
         return self
 
     def __neg__(self):
         neg_self = adarray(-self._base)
         neg_self.add_ops(self, -1)
         if __DEBUG_MODE__:
-            neg_self._DEBUG_perturb = -_DEBUG_perturb(self)
-            _DEBUG_verify(neg_self)
+            neg_self._DEBUG_perturb = -_DEBUG_perturb_retrieve(self)
+            _DEBUG_perturb_verify(neg_self)
         return neg_self
 
     def __pos__(self):
@@ -476,8 +497,8 @@ class adarray:
             a_x_b = adarray(self._base * a)
             a_x_b.add_ops(self, a)
             if __DEBUG_MODE__:
-                a_x_b._DEBUG_perturb = _DEBUG_perturb(self) * a
-                _DEBUG_verify(a_x_b)
+                a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * a
+                _DEBUG_perturb_verify(a_x_b)
         else:
             b = self
             if a.size > b.size:
@@ -501,9 +522,9 @@ class adarray:
             if not isinstance(b, np.ndarray): a_x_b.add_ops(b, b_multiplier)
 
             if __DEBUG_MODE__:
-                a_x_b._DEBUG_perturb = _DEBUG_perturb(self) * base(a) \
-                                     + base(self) * _DEBUG_perturb(a)
-                _DEBUG_verify(a_x_b)
+                a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
+                                     + base(self) * _DEBUG_perturb_retrieve(a)
+                _DEBUG_perturb_verify(a_x_b)
         return a_x_b
 
     def __rmul__(self, a):
@@ -515,7 +536,7 @@ class adarray:
             self.self_ops(a)
             if __DEBUG_MODE__:
                 self._DEBUG_perturb *= a
-                _DEBUG_verify(self)
+                _DEBUG_perturb_verify(self)
         else:
             self._base *= a._base
             multiplier = sp.dia_matrix((np.ravel(a._base), 0), (a.size,a.size))
@@ -524,9 +545,9 @@ class adarray:
                                        (self.size, self.size))
             self.add_ops(a, multiplier)
             if __DEBUG_MODE__:
-                self._DEBUG_perturb = _DEBUG_perturb(self) * base(a) \
-                                    + base(self) * _DEBUG_perturb(a)
-                _DEBUG_verify(self)
+                self._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
+                                    + base(self) * _DEBUG_perturb_retrieve(a)
+                _DEBUG_perturb_verify(self)
         return self
 
     def __div__(self, a):
@@ -550,8 +571,8 @@ class adarray:
         self_to_a.add_ops(self, multiplier)
         if __DEBUG_MODE__:
             self_to_a._DEBUG_perturb = a * self._base**(a-1) \
-                                     * _DEBUG_perturb(self)
-            _DEBUG_verify(self_to_a)
+                                     * _DEBUG_perturb_retrieve(self)
+            _DEBUG_perturb_verify(self_to_a)
         return self_to_a
     
     def sum(self, axis=None, dtype=None, out=None):
@@ -573,8 +594,8 @@ class adarray:
             self_i.add_ops(self, multiplier)
 
         if __DEBUG_MODE__:
-            self_i._DEBUG_perturb = _DEBUG_perturb(self)[ind]
-            _DEBUG_verify(self_i)
+            self_i._DEBUG_perturb = _DEBUG_perturb_retrieve(self)[ind]
+            _DEBUG_perturb_verify(self_i)
         return self_i
 
     def __setitem__(self, ind, a):
@@ -595,8 +616,8 @@ class adarray:
                 self.add_ops(a, multiplier)
 
         if __DEBUG_MODE__:
-            self._DEBUG_perturb[ind] = _DEBUG_perturb(a)
-            _DEBUG_verify(self)
+            self._DEBUG_perturb[ind] = _DEBUG_perturb_retrieve(a)
+            _DEBUG_perturb_verify(self)
 
     # ------------------ str, repr ------------------ #
 

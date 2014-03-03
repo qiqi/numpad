@@ -10,7 +10,7 @@ from numpad.adarray import *
 from numpad.adarray import _diff_recurse, _clear_tmp_product
 
 class adsolution(adarray):
-    def __init__(self, solution, residual, n_Newton=0):
+    def __init__(self, solution, residual, n_Newton):
         adarray.__init__(self, solution._base)
         self._residual = residual
         self._residual_ops = residual.i_ops()
@@ -58,14 +58,15 @@ def solve(func, u0, args=(), kargs={},
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
-            break
+            return adsolution(u, res, i_Newton + 1)
         # Newton update
         J = res.diff(u).tocsr()
         minus_du = splinalg.spsolve(J, np.ravel(res._base), use_umfpack=False)
         u._base -= minus_du.reshape(u.shape)
         u = adarray(u._base)  # unlink operation history if any
+    # not converged
+    return adsolution(u, res, np.inf)
 
-    return adsolution(u, res, i_Newton + 1)
 
 
 
