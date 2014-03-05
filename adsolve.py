@@ -8,7 +8,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
 from numpad.adarray import *
 from numpad.adarray import _diff_recurse, _clear_tmp_product
-from numpad.adarray import __DEBUG_MODE__, _DEBUG_new_perturb
+from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
 
 class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton):
@@ -19,7 +19,7 @@ class adsolution(adarray):
         self._res_norm = np.linalg.norm(residual._base)
         self._res_diff_solulion = residual.diff(solution)
 
-        _DEBUG_new_perturb(self)
+        _DEBUG_perturb_new(self)
 
     def adjoint(self, functional, s):
         assert functional.size == self.size
@@ -53,13 +53,13 @@ class adsolution(adarray):
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
     u = adarray(base(u0).copy())
-    _DEBUG_new_perturb(u)
+    _DEBUG_perturb_new(u)
 
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
         res_norm = np.linalg.norm(res._base, np.inf)
         if verbose:
-            print('    ', i_Newton, res_norm, res[-1])
+            print('    ', i_Newton, res_norm)
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
@@ -69,7 +69,7 @@ def solve(func, u0, args=(), kargs={},
         minus_du = splinalg.spsolve(J, np.ravel(res._base), use_umfpack=False)
         u._base -= minus_du.reshape(u.shape)
         u = adarray(u._base)  # unlink operation history if any
-        _DEBUG_new_perturb(u)
+        _DEBUG_perturb_new(u)
     # not converged
     return adsolution(u, res, np.inf)
 

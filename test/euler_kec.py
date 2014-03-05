@@ -68,12 +68,25 @@ def euler_flux(rho, u, v, E, p):
     G = array([rho*v, rho*u*v, rho*v**2 + p, v*(E + p)])
     return F, G
 
+def sponge_flux(c_ext, w_ext, geo):
+    ci = 0.5 * (c_ext[1:,1:-1] + c_ext[:-1,1:-1])
+    cj = 0.5 * (c_ext[1:-1,1:] + c_ext[1:-1,:-1])
+
+    a = geo.area
+    ai = vstack([a[:1,:], (a[1:,:] + a[:-1,:]) / 2, a[-1:,:]])
+    aj = hstack([a[:,:1], (a[:,1:] + a[:,:-1]) / 2, a[:,-1:]])
+
+    Fi = -0.5 * ci * ai * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
+    Fj = -0.5 * cj * aj * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+    return Fi, Fj
+
 def euler_kec(w, w0, geo, dt):
     '''
     Kinetic energy conserving scheme with no numerical viscosity
     '''
     w_ext = extend(w, geo)
     rho, u, v, E, p = primative(w_ext)
+    c = sqrt(1.4 * p / rho)
     # interface average
     rho_i = 0.5 * (rho[1:,1:-1] + rho[:-1,1:-1])
     rho_j = 0.5 * (rho[1:-1,1:] + rho[1:-1,:-1])
@@ -90,6 +103,10 @@ def euler_kec(w, w0, geo, dt):
     F_j, G_j = euler_flux(rho_j, u_j, v_j, E_j, p_j)
     Fi = + F_i * geo.dxy_i[1] - G_i * geo.dxy_i[0]
     Fj = - F_j * geo.dxy_j[1] + G_j * geo.dxy_j[0]
+    # sponge
+    Fi_s, Fj_s = sponge_flux(c, w_ext, geo)
+    Fi[:5,:]  += 0.5 * Fi_s[:5,:]
+    Fi[-5:,:] += 0.5 * Fi_s[-5:,:]
     # residual
     divF = (Fi[:,1:,:] - Fi[:,:-1,:] + Fj[:,:,1:] - Fj[:,:,:-1]) / geo.area
     return (w - w0) / dt + ravel(divF)
@@ -135,7 +152,8 @@ def vis(w, geo):
     pt = p * (1 + 0.2 * M**2)**3.5
 
     subplot(1,2,1)
-    contourf(x, y, avg(M), 100)
+    # contourf(x, y, avg(M), 100)
+    contourf(xc, yc, M[1:-1,1:-1], 100)
     colorbar()
     quiver(xc, yc, u[1:-1,1:-1], v[1:-1,1:-1])
     axis('scaled')
@@ -156,7 +174,8 @@ def vis(w, geo):
     
     subplot(1,2,2)
     p_frac = (p - p_out) / (0.5 * rho[0,0] * u[0,0]**2)
-    contourf(x, y, avg(p_frac), 100)
+    # contourf(x, y, avg(p_frac), 100)
+    contourf(xc, yc, p_frac[1:-1,1:-1], 100)
     colorbar()
     axis('scaled')
     xlabel('x')
@@ -178,19 +197,19 @@ if geometry == 'nozzle':
     y *= a[:,np.newaxis]
 
 elif geometry == 'bend':
-    Ni, Nj = 100, 20
+    Ni, Nj = 90, 20
     # Ni, Nj = 200, 40
-    theta = np.linspace(0, pi/2, Ni/5+1)
+    theta = np.linspace(0, pi/2, Ni/3+1)
     r = 15 + 8 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
     r, theta = np.meshgrid(r, theta)
     x, y = r * sin(theta), r * cos(theta)
 
-    dx = 16 / Nj
+    dx = 24 / Nj
     y0 = y[0,:]
-    y0, x0 = np.meshgrid(y0, dx * np.arange(-Ni*2/5, 0))
+    y0, x0 = np.meshgrid(y0, dx * np.arange(-Ni/3, 0))
 
     x1 = x[-1,:]
-    x1, y1 = np.meshgrid(x1, -dx * np.arange(1, 1 + Ni*2/5))
+    x1, y1 = np.meshgrid(x1, -dx * np.arange(1, 1 + Ni/3))
     
     x, y = np.vstack([x0, x, x1]), np.vstack([y0, y, y1])
 

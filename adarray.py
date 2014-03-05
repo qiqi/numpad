@@ -225,7 +225,7 @@ def array(a):
         return a
     elif isinstance(a, (numbers.Number, np.ndarray)):
         a = adarray(a)
-        _DEBUG_new_perturb(a)
+        _DEBUG_perturb_new(a)
         return a
     elif isinstance(a, (list, tuple)):
         a = list(a)
@@ -343,6 +343,9 @@ class adarray:
         self._base = np.asarray(base(array), np.float64)
         self._ops = []
         self._ind = np.arange(self.size).reshape(self.shape)
+
+    def __array__(self):
+        return self._base
 
     def _ind_casted_to(self, shape):
         ind = np.zeros(shape, dtype=int)
@@ -653,8 +656,9 @@ class adarray:
     # ------------------ differentiation ------------------ #
 
     def diff(self, u):
+        derivative = _diff_recurse(self, u, self.i_ops())
         _clear_tmp_product(self, self.i_ops())
-        return _diff_recurse(self, u, self.i_ops())
+        return derivative
 
 # ------------------ recursive functions for differentiation --------------- #
 def _clear_tmp_product(f, i_f_ops):
@@ -663,14 +667,14 @@ def _clear_tmp_product(f, i_f_ops):
         if not f._tmp_product:   # empty
             del f._tmp_product
 
-    if i_f_ops > 0:
-        op = f._ops[i_f_ops - 1]
-        if len(op) == 1:  # self operation
-            _clear_tmp_product(f, i_f_ops - 1)
-        else:
-            other, i_other_ops, multiplier = op
-            _clear_tmp_product(other, i_other_ops)
-            _clear_tmp_product(f, i_f_ops - 1)
+        if i_f_ops > 0:
+            op = f._ops[i_f_ops - 1]
+            if len(op) == 1:  # self operation
+                _clear_tmp_product(f, i_f_ops - 1)
+            else:
+                other, i_other_ops, multiplier = op
+                _clear_tmp_product(other, i_other_ops)
+                _clear_tmp_product(f, i_f_ops - 1)
 
 def _diff_recurse(f, u, i_f_ops):
     def multiply_ops(op0, op1):

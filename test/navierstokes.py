@@ -24,10 +24,9 @@ def extend(w_interior, geo):
     d_u = d_pt / (rho * (u + c))
     d_p = rho * c * d_u
 
-    relax = 0.5
-    rho = rho + relax * d_rho
-    u = u + relax * d_u
-    p = p + relax * d_p
+    rho = rho + d_rho
+    u = u + d_u
+    p = p + d_p
     w[0,0,1:-1] = rho
     w[1,0,1:-1] = rho * u
     w[2,0,1:-1] = 0
@@ -36,7 +35,7 @@ def extend(w_interior, geo):
     # outlet
     w[:,-1,1:-1] = w[:,-2,1:-1]
     rho, u, v, E, p = primative(w[:,-1,1:-1])
-    p = relax * p_out + (1 - relax) * p
+    p = p_out
     w[3,-1,1:-1] = p / (1.4 - 1) + 0.5 * rho * (u**2 + v**2)
 
     # walls
@@ -99,12 +98,25 @@ def ns_flux(rho, u, v, E, p, grad_u):
                         v * (E + p)    - sigma_xy * u - sigma_yy * v])
     return F, G
 
+def sponge_flux(c_ext, w_ext, geo):
+    ci = 0.5 * (c_ext[1:,1:-1] + c_ext[:-1,1:-1])
+    cj = 0.5 * (c_ext[1:-1,1:] + c_ext[1:-1,:-1])
+
+    a = geo.area
+    ai = vstack([a[:1,:], (a[1:,:] + a[:-1,:]) / 2, a[-1:,:]])
+    aj = hstack([a[:,:1], (a[:,1:] + a[:,:-1]) / 2, a[:,-1:]])
+
+    Fi = -0.5 * ci * ai * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
+    Fj = -0.5 * cj * aj * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+    return Fi, Fj
+
 def ns_kec(w, w0, geo, dt):
     '''
     Kinetic energy conserving scheme with no numerical viscosity
     '''
     w_ext = extend(w, geo)
     rho, u, v, E, p = primative(w_ext)
+    c = sqrt(1.4 * p / rho)
     # velocity gradient on nodes
     dudx, dudy = grad_dual(u[1:-1,1:-1], geo)
     dvdx, dvdy = grad_dual(v[1:-1,1:-1], geo)
@@ -130,6 +142,10 @@ def ns_kec(w, w0, geo, dt):
     f_j, g_j = ns_flux(rho_j, u_j, v_j, E_j, p_j, duv_dxy_j)
     Fi = + f_i * geo.dxy_i[1] - g_i * geo.dxy_i[0]
     Fj = - f_j * geo.dxy_j[1] + g_j * geo.dxy_j[0]
+    # sponge
+    Fi_s, Fj_s = sponge_flux(c, w_ext, geo)
+    Fi[:5,:]  += 0.5 * Fi_s[:5,:]
+    Fi[-5:,:] += 0.5 * Fi_s[-5:,:]
     # residual
     divF = (Fi[:,1:,:] - Fi[:,:-1,:] + Fj[:,:,1:] - Fj[:,:,:-1]) / geo.area
     return (w - w0) / dt + ravel(divF)
@@ -206,7 +222,7 @@ def vis(w, geo):
 
 
 # ---------------------- time integration --------------------- #
-geometry = 'nozzle'
+geometry = 'bend'
 
 if geometry == 'nozzle':
     Ni, Nj = 50, 20
@@ -248,7 +264,7 @@ w[3] = 1E5 / (1.4 - 1)
 
 w0 = ravel(w)
 
-for i in range(20):
+for i in range(100):
     print('i = ', i, 't = ', t)
     w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
     if w._n_Newton == 1:
@@ -268,8 +284,10 @@ for i in range(20):
     #     vis(w, geo)
     #     show(block=True)
 
-print("It'll never converge!")
-figure(figsize=(16,9))
+print('Final, t = inf')
+dt = np.inf
+w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+figure(figsize=(30,10))
 vis(w, geo)
 savefig('navierstokes-{0}.png'.format(geometry))
 show(block=True)
