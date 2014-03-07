@@ -87,30 +87,23 @@ def base(a):
 
 # --------------------- adarray construction --------------------- #
 
-def zeros(shape):
-    new_array = adarray(np.zeros(shape))
-    _DEBUG_perturb_new(new_array)
-    return new_array
+def zeros(*args, **kargs):
+    return array(np.zeros(*args, **kargs))
 
-def ones(shape):
-    new_array = adarray(np.ones(shape))
-    _DEBUG_perturb_new(new_array)
-    return new_array
+def ones(*args, **kargs):
+    return array(np.ones(*args, **kargs))
 
-def random(shape):
-    new_array = adarray(np.random.random(shape))
-    _DEBUG_perturb_new(new_array)
-    return new_array
+def random(*args, **kargs):
+    return array(np.random.random(*args, **kargs))
 
-def linspace(start, stop, num=50, endpoint=True):
-    new_array = adarray(np.linspace(start, stop, num, endpoint))
-    _DEBUG_perturb_new(new_array)
-    return new_array
+def linspace(*args, **kargs):
+    return array(np.linspace(*args, **kargs))
 
-def loadtxt(fname, dtype=float, comments='#', delimiter=None,
-        converters=None, skiprows=0, usecols=None, unpack=False, ndmin=0):
-    return array(np.loadtxt(fname, dtype, comments, delimiter, converters,
-        skiprows, usecols, unpack, ndmin))
+def arange(*args, **kargs):
+    return array(np.arange(*args, **kargs))
+
+def loadtxt(*args, **kargs):
+    return array(np.loadtxt(*args, **kargs))
 
 # --------------------- algebraic functions --------------------- #
 
@@ -123,12 +116,7 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
 #     return b * a_gt_b + a * (1. - a_gt_b)
 
 def sigmoid(x):
-    '''
-    Todo: how to supress numpy warning messages when a is inf?
-    This doesn't affect result because 1/inf = 0
-    '''
-    a = exp(-2 * x)
-    return 1 / (1 + a)
+    return (tanh(x) + 1) / 2
 
 def gt_smooth(a, b, c=0.1):
     return sigmoid((a - b) / c)
@@ -144,79 +132,94 @@ def minimum_smooth(a, b, c=0.1):
     return -maximum_smooth(-a, -b, c)
 
 def exp(x, out=None):
-    if isinstance(x, (numbers.Number, np.ndarray)):
-        return np.exp(x, out)
-    else:
-        if out is None:
-            out = adarray(np.exp(x._base))
-        else:
-            np.exp(x._base, out._base)
-            out.self_ops(0)
-        multiplier = sp.dia_matrix((np.exp(np.ravel(x._base)), 0),
-                                   (x.size, x.size))
-        out.add_ops(x, multiplier)
+    x = array(x)
 
-        if __DEBUG_MODE__:
-            out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb_retrieve(x)
-            _DEBUG_perturb_verify(out)
-        return out
+    if out is None:
+        out = adarray(np.exp(x._base))
+    else:
+        np.exp(x._base, out._base)
+        out.self_ops(0)
+
+    multiplier = sp.dia_matrix((np.exp(np.ravel(x._base)), 0),
+                               (x.size, x.size))
+    out.add_ops(x, multiplier)
+
+    if __DEBUG_MODE__:
+        out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb_retrieve(x)
+        _DEBUG_perturb_verify(out)
+    return out
 
 def sqrt(x):
     return x**(0.5)
 
 def sin(x, out=None):
-    if isinstance(x, (numbers.Number, np.ndarray)):
-        return np.sin(x, out)
-    else:
-        if out is None:
-            out = adarray(np.sin(x._base))
-        else:
-            np.sin(x._base, out._base)
-            out.self_ops(0)
-        multiplier = sp.dia_matrix((np.cos(np.ravel(x._base)), 0),
-                                   (x.size, x.size))
-        out.add_ops(x, multiplier)
+    x = array(x)
 
-        if __DEBUG_MODE__:
-            out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb_retrieve(x)
-            _DEBUG_perturb_verify(out)
-        return out
+    if out is None:
+        out = adarray(np.sin(x._base))
+    else:
+        np.sin(x._base, out._base)
+        out.self_ops(0)
+    multiplier = sp.dia_matrix((np.cos(np.ravel(x._base)), 0),
+                               (x.size, x.size))
+    out.add_ops(x, multiplier)
+
+    if __DEBUG_MODE__:
+        out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb_retrieve(x)
+        _DEBUG_perturb_verify(out)
+    return out
 
 def cos(x, out=None):
-    if isinstance(x, (numbers.Number, np.ndarray)):
-        return np.cos(x, out)
-    else:
-        if out is None:
-            out = adarray(np.cos(x._base))
-        else:
-            np.cos(x._base, out._base)
-            out.self_ops(0)
-        multiplier = sp.dia_matrix((-np.sin(np.ravel(x._base)), 0),
-                                   (x.size, x.size))
-        out.add_ops(x, multiplier)
+    x = array(x)
 
-        if __DEBUG_MODE__:
-            out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb_retrieve(x)
-            _DEBUG_perturb_verify(out)
-        return out
+    if out is None:
+        out = adarray(np.cos(x._base))
+    else:
+        np.cos(x._base, out._base)
+        out.self_ops(0)
+    multiplier = sp.dia_matrix((-np.sin(np.ravel(x._base)), 0),
+                               (x.size, x.size))
+    out.add_ops(x, multiplier)
+
+    if __DEBUG_MODE__:
+        out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb_retrieve(x)
+        _DEBUG_perturb_verify(out)
+    return out
 
 def log(x, out=None):
-    if isinstance(x, (numbers.Number, np.ndarray)):
-        return np.log(x, out)
-    else:
-        if out is None:
-            out = adarray(np.log(x._base))
-        else:
-            np.log(x._base, out._base)
-            out.self_ops(0)
-        multiplier = sp.dia_matrix((1. / np.ravel(x._base), 0),
-                                   (x.size, x.size))
-        out.add_ops(x, multiplier)
+    x = array(x)
 
-        if __DEBUG_MODE__:
-            out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._base
-            _DEBUG_perturb_verify(out)
-        return out
+    if out is None:
+        out = adarray(np.log(x._base))
+    else:
+        np.log(x._base, out._base)
+        out.self_ops(0)
+    multiplier = sp.dia_matrix((1. / np.ravel(x._base), 0),
+                               (x.size, x.size))
+    out.add_ops(x, multiplier)
+
+    if __DEBUG_MODE__:
+        out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._base
+        _DEBUG_perturb_verify(out)
+    return out
+
+def tanh(x, out=None):
+    x = array(x)
+
+    if out is None:
+        out = adarray(np.tanh(x._base))
+    else:
+        np.tanh(x._base, out._base)
+        out.self_ops(0)
+
+    multiplier = sp.dia_matrix((1 - np.tanh(x._base)**2, 0), (x.size, x.size))
+    out.add_ops(x, multiplier)
+
+    if __DEBUG_MODE__:
+        out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) \
+                           * (1 - np.tanh(x._base)**2)
+        _DEBUG_perturb_verify(out)
+    return out
 
 # ------------------ copy, stack, transpose operations ------------------- #
 
@@ -461,17 +464,18 @@ class adarray:
             a_p_b = adarray(base(a) + base(b))
 
             multiplier = np.ones(a_p_b.shape)
-
             i = np.arange(a_p_b.size)
-            j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
-            j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
-            a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
-                                         shape=(a_p_b.size, a.size))
-            b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
-                                         shape=(a_p_b.size, b.size))
 
-            if not isinstance(a, np.ndarray): a_p_b.add_ops(a, a_multiplier)
-            if not isinstance(b, np.ndarray): a_p_b.add_ops(b, b_multiplier)
+            if hasattr(a, '_base'):
+                j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
+                a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
+                                             shape=(a_p_b.size, a.size))
+                a_p_b.add_ops(a, a_multiplier)
+            if hasattr(b, '_base'):
+                j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
+                b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
+                                             shape=(a_p_b.size, b.size))
+                a_p_b.add_ops(b, b_multiplier)
 
         if __DEBUG_MODE__:
             a_p_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) \
@@ -537,15 +541,17 @@ class adarray:
                 b_multiplier = base(a)
 
             i = np.arange(a_x_b.size)
-            j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
-            j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
-            a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
-                                         shape=(a_x_b.size, a.size))
-            b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
-                                         shape=(a_x_b.size, b.size))
 
-            if not isinstance(a, np.ndarray): a_x_b.add_ops(a, a_multiplier)
-            if not isinstance(b, np.ndarray): a_x_b.add_ops(b, b_multiplier)
+            if hasattr(a, '_base'):
+                j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
+                a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
+                                             shape=(a_x_b.size, a.size))
+                a_x_b.add_ops(a, a_multiplier)
+            if hasattr(b, '_base'):
+                j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
+                b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
+                                             shape=(a_x_b.size, b.size))
+                a_x_b.add_ops(b, b_multiplier)
 
             if __DEBUG_MODE__:
                 a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
@@ -589,7 +595,8 @@ class adarray:
         return a * self**(-1)
 
     def __pow__(self, a):
-        assert isinstance(a, numbers.Number)
+        if not isinstance(a, numbers.Number):
+            return NotImplemented
         self_to_a = adarray(self._base ** a)
         multiplier = a * np.ravel(self._base)**(a-1)
         multiplier[~np.isfinite(multiplier)] = 0
@@ -600,6 +607,9 @@ class adarray:
                                      * _DEBUG_perturb_retrieve(self)
             _DEBUG_perturb_verify(self_to_a)
         return self_to_a
+
+    def __rpow__(self, a):
+        return exp(self * log(a))
     
     def sum(self, axis=None, dtype=None, out=None):
         return sum(self, axis, dtype=None, out=None)
