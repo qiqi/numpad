@@ -212,7 +212,8 @@ def tanh(x, out=None):
         np.tanh(x._base, out._base)
         out.self_ops(0)
 
-    multiplier = sp.dia_matrix((1 - np.tanh(x._base)**2, 0), (x.size, x.size))
+    multiplier = sp.dia_matrix((1 - np.tanh(np.ravel(x._base))**2, 0),
+                               (x.size, x.size))
     out.add_ops(x, multiplier)
 
     if __DEBUG_MODE__:
