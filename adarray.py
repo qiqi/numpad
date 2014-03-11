@@ -72,6 +72,11 @@ def _DEBUG_perturb_retrieve(var):
     else:
         return np.zeros(np.asarray(var).shape)
 
+def adarray_count():
+    import gc
+    gc.collect()
+    return len([obj for obj in gc.get_objects() if isinstance(obj, adarray)])
+
 # --------------------- utilities --------------------- #
 
 def base(a):
