@@ -72,6 +72,11 @@ def _DEBUG_perturb_retrieve(var):
     else:
         return np.zeros(np.asarray(var).shape)
 
+def adarray_count():
+    import gc
+    gc.collect()
+    return len([obj for obj in gc.get_objects() if isinstance(obj, adarray)])
+
 # --------------------- utilities --------------------- #
 
 def base(a):
@@ -300,36 +305,42 @@ def transpose(a, axes=None):
         _DEBUG_perturb_verify(a_transpose)
     return a_transpose
 
-def hstack(adarrays):
-    ndarrays = []
-    components, marker_arrays = [], []
-    for array in adarrays:
-        ndarrays.append(base(array))
-        if isinstance(array, (numbers.Number, np.ndarray)):
-            marker_arrays.append(np.zeros_like(array))
-        else:
-            components.append(array)
-            marker_arrays.append(len(components) * np.ones_like(array._base))
-    stacked_array = adarray(np.hstack(ndarrays))
-    marker = np.ravel(np.hstack(marker_arrays))
-    # marker now contains integers. 0 means nothing, 1 means the 1st component
-    for i_component, component in enumerate(components):
-        i = (marker == i_component + 1).nonzero()[0]
+def concatenate(adarrays, axis=0):
+    adarrays = [array(a) for a in adarrays]
+    ndarrays, marker_arrays = [], []
+    for a in adarrays:
+        if a.ndim == 0:
+            a = a[np.newaxis]
+        marker_arrays.append(len(ndarrays) * np.ones_like(a._base))
+        ndarrays.append(base(a))
+
+    concatenated_array = adarray(np.concatenate(ndarrays, axis))
+    marker = np.ravel(np.concatenate(marker_arrays, axis))
+
+    # marker now contains integers corresponding to which component
+    for i_component, a in enumerate(adarrays):
+        i = (marker == i_component).nonzero()[0]
         j = np.arange(i.size)
         data = np.ones(i.size, int)
         multiplier = sp.csr_matrix((data, (i, j)), shape=(marker.size, i.size))
-        stacked_array.add_ops(component, multiplier)
+        concatenated_array.add_ops(a, multiplier)
 
     if __DEBUG_MODE__:
         _DEBUG_perturb_list = []
-        for array in adarrays:
-            _DEBUG_perturb_list.append(_DEBUG_perturb_retrieve(array))
-        stacked_array._DEBUG_perturb = np.hstack(_DEBUG_perturb_list)
-        _DEBUG_perturb_verify(stacked_array)
-    return stacked_array
+        for a in adarrays:
+            _DEBUG_perturb_list.append(_DEBUG_perturb_retrieve(a))
+        concatenated_array._DEBUG_perturb = \
+            np.concatenate(_DEBUG_perturb_list, axis)
+        _DEBUG_perturb_verify(concatenated_array)
+    return concatenated_array
+
+def hstack(adarrays):
+    max_ndim = max(array(a).ndim for a in adarrays)
+    axis = 1 if max_ndim > 1 else 0
+    return concatenate(adarrays, axis=axis)
 
 def vstack(adarrays):
-    return hstack([a.T for a in adarrays]).T
+    return concatenate(adarrays, axis=0)
 
 def meshgrid(x, y):
     ind_xx, ind_yy = np.meshgrid(x._ind, y._ind)
