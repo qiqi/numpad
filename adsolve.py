@@ -9,51 +9,62 @@ import scipy.sparse.linalg as splinalg
 from numpad.adarray import *
 from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
 
+class SolutionState(IntermediateState):
+    def __init__(self, host, residual_state, jacobian):
+        IntermediateState.__init__(self, host, None, None, None)
+        assert isinstance(residual_state, IntermediateState)
+        assert residual_state.size == self.size
+        self.residual = residual_state
+        assert jacobian.shape == (self.size, self.size)
+        self.jacobian = jacobian
+
+    def obliviate(self):
+        self.residual = None
+        self.jacobian = None
+
+    # ------------------ recursive functions for differentiation --------------- #
+
+    def clear_self_diff_u(self):
+        IntermediateState.clear_self_diff_u(self)
+        if self.residual:
+            self.residual.clear_self_diff_u()
+    
+    def diff_recurse(self, u):
+        if u is self or hasattr(self, '_self_diff_u') or self.residual is None:
+            return IntermediateState.diff_recurse(self, u)
+
+        J_u = self.jacobian
+        J_s = self.residual.diff_recurse(u)
+        if J_s is 0:
+            self_diff_u = 0
+        else:
+            J_s = np.array(J_s.todense())
+
+            J_u_solve = splinalg.factorized(J_u.tocsc())
+            self_diff_u = np.transpose([-J_u_solve(b) for b in J_s.T])
+            self_diff_u = np.matrix(self_diff_u.reshape(J_s.shape))
+
+        self.self_diff_u = self_diff_u
+        return self_diff_u
+
+
 class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton):
+        assert isinstance(solution, adarray)
+        assert isinstance(residual, adarray)
+
         adarray.__init__(self, solution._base)
-        self._residual = residual
-        self._residual_ops = residual.i_ops()
+        self._current_state = SolutionState(self, residual._current_state,
+                                            residual.diff(solution))
         self._n_Newton = n_Newton
         self._res_norm = np.linalg.norm(residual._base)
-        self._res_diff_solulion = residual.diff(solution)
 
         _DEBUG_perturb_new(self)
 
     def obliviate(self):
-        del self._residual
-        del self._residual_ops
+        self._initial_state.obliviate()
         del self._n_Newton
         del self._res_norm
-        del self._res_diff_solulion
-
-    # ------------------ recursive functions for differentiation --------------- #
-    def _clear_tmp_product(self, i_ops):
-        adarray._clear_tmp_product(self, i_ops)
-        if i_ops == 0 and hasattr(self, '_residual'):
-            self._residual._clear_tmp_product(self._residual_ops)
-    
-    def _diff_recurse(self, u, i_ops):
-        if i_ops > 0 or u is self:
-            return adarray._diff_recurse(self, u, i_ops)
-        elif not hasattr(self, '_residual'):
-            return 0
-
-        if not hasattr(self, '_tmp_product'):
-            self._tmp_product = {}
-        elif 0 in self._tmp_product:  # 0 is i_ops
-            return self._tmp_product[0]
-    
-        J_u = self._res_diff_solulion.tocsr()
-        J_s = self._residual._diff_recurse(u, self._residual_ops)
-        J_s = np.array(J_s.todense())
-
-        J_u_solve = splinalg.factorized(J_u.tocsc())
-        d_self_du = np.transpose([-J_u_solve(b) for b in J_s.T])
-        product = np.matrix(d_self_du.reshape(J_s.shape))
-
-        self._tmp_product[0] = product
-        return product
 
 
 def solve(func, u0, args=(), kargs={},

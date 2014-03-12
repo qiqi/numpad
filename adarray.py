@@ -1,6 +1,7 @@
 import time
 import unittest
 import numbers
+import weakref
 import pylab
 import numpy as np
 import scipy.sparse as sp
@@ -9,6 +10,89 @@ import scipy.sparse.linalg as splinalg
 # __all__ = ['base', 'zeros', 'ones', 'random', 'linspace', 'loadtxt',
 # 'sigmoid', 'gt_smooth', 'lt_smooth', 'maximum_smooth', 'minimum_smooth',
 # ]
+
+# --------------- intermediate states and their operations ---------------- #
+
+def InitialState(host):
+    return IntermediateState(host, None, None, None)
+
+class IntermediateState:
+    def __init__(self, host, prev_state, multiplier, other_state):
+        assert isinstance(host, adarray)
+        self.host = weakref.ref(host)
+        self.size = host.size
+
+        self.prev = prev_state
+        if prev_state is not None:
+            assert isinstance(prev_state, IntermediateState)
+            prev_state.next = weakref.ref(self)
+
+        if multiplier is None:       # initial state
+            assert prev_state is None and other_state is None
+            self.other = None
+        else:
+            self.multiplier = multiplier
+            if other_state is None:  # unitary operation
+                if not isinstance(multiplier, numbers.Number):  # not 1 or 0
+                    assert multiplier.shape == (self.size, self.size)
+                self.other = None
+            else:                    # binary operation
+                if not isinstance(multiplier, numbers.Number):  # not 1 or 0
+                    assert multiplier.shape == (self.size, other_state.size)
+                other_state.to_list.append(weakref.ref(self))
+                assert isinstance(other_state, IntermediateState)
+                self.other = other_state
+
+        self.to_list = []
+
+    def next_state(self, multiplier, other_state=None):
+        return IntermediateState(self.host(), self, multiplier, other_state)
+
+    # ------------------ recursive functions for differentiation --------------- #
+
+    def clear_self_diff_u(self):
+        if hasattr(self, '_self_diff_u'):
+            del self._self_diff_u
+            if self.other:
+                self.other.clear_self_diff_u()
+            if self.prev:
+                self.prev.clear_self_diff_u()
+    
+    def diff_recurse(self, u):
+        if hasattr(self, '_self_diff_u'):
+            return self._self_diff_u
+
+        if u is self:             # found u in the tree
+            self_diff_u = sp.eye(u.size, u.size)
+        elif self.prev is None:   # initial state, dead end
+            self_diff_u = 0
+        elif self.other is None:  # unitary operation
+            self_diff_u = _multiply_ops(self.multiplier,
+                                        self.prev.diff_recurse(u))
+        else:                     # binary operation
+            self_diff_u_0 = self.prev.diff_recurse(u)
+            self_diff_u_1 = _multiply_ops(self.multiplier,
+                                          self.other.diff_recurse(u))
+            self_diff_u = _add_ops(self_diff_u_0, self_diff_u_1)
+    
+        self._self_diff_u = self_diff_u
+        return self_diff_u
+
+# -------------- auxiliary functions for differentiation ------------ #
+
+def _multiply_ops(op0, op1):
+    if op0 is 0 or op1 is 0:
+        return 0
+    else:
+        return op0 * op1
+
+def _add_ops(op0, op1):
+    if op0 is 0:
+        return op1
+    elif op1 is 0:
+        return op0
+    else:
+        return op0 + op1
 
 # --------------------- debug --------------------- #
 
@@ -76,6 +160,11 @@ def adarray_count():
     import gc
     gc.collect()
     return len([obj for obj in gc.get_objects() if isinstance(obj, adarray)])
+
+def adstate_count():
+    import gc
+    gc.collect()
+    return len([obj for obj in gc.get_objects() if isinstance(obj, IntermediateState)])
 
 # --------------------- utilities --------------------- #
 
@@ -165,11 +254,11 @@ def exp(x, out=None):
         out = adarray(np.exp(x._base))
     else:
         np.exp(x._base, out._base)
-        out.self_ops(0)
+        out.next_state(0)
 
     multiplier = sp.dia_matrix((np.exp(np.ravel(x._base)), 0),
                                (x.size, x.size))
-    out.add_ops(x, multiplier)
+    out.next_state(multiplier, x)
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb_retrieve(x)
@@ -186,10 +275,10 @@ def sin(x, out=None):
         out = adarray(np.sin(x._base))
     else:
         np.sin(x._base, out._base)
-        out.self_ops(0)
+        out.next_state(0)
     multiplier = sp.dia_matrix((np.cos(np.ravel(x._base)), 0),
                                (x.size, x.size))
-    out.add_ops(x, multiplier)
+    out.next_state(multiplier, x)
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb_retrieve(x)
@@ -203,10 +292,10 @@ def cos(x, out=None):
         out = adarray(np.cos(x._base))
     else:
         np.cos(x._base, out._base)
-        out.self_ops(0)
+        out.next_state(0)
     multiplier = sp.dia_matrix((-np.sin(np.ravel(x._base)), 0),
                                (x.size, x.size))
-    out.add_ops(x, multiplier)
+    out.next_state(multiplier, x)
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb_retrieve(x)
@@ -220,10 +309,10 @@ def log(x, out=None):
         out = adarray(np.log(x._base))
     else:
         np.log(x._base, out._base)
-        out.self_ops(0)
+        out.next_state(0)
     multiplier = sp.dia_matrix((1. / np.ravel(x._base), 0),
                                (x.size, x.size))
-    out.add_ops(x, multiplier)
+    out.next_state(multiplier, x)
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._base
@@ -237,11 +326,11 @@ def tanh(x, out=None):
         out = adarray(np.tanh(x._base))
     else:
         np.tanh(x._base, out._base)
-        out.self_ops(0)
+        out.next_state(0)
 
     multiplier = sp.dia_matrix((1 - np.tanh(np.ravel(x._base))**2, 0),
                                (x.size, x.size))
-    out.add_ops(x, multiplier)
+    out.next_state(multiplier, x)
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) \
@@ -271,7 +360,7 @@ def array(a):
             i_data = i * a[i].size + j_data
             shape = (adarray_a.size, a[i].size)
             multiplier = sp.csr_matrix((data, (i_data, j_data)), shape=shape)
-            adarray_a.add_ops(a[i], multiplier)
+            adarray_a.next_state(multiplier, a[i])
 
         if __DEBUG_MODE__:
             _DEBUG_perturb_list = []
@@ -289,7 +378,7 @@ def ravel(a):
 def copy(a):
     a_copy = adarray(np.copy(base(a)))
     if isinstance(a, adarray):
-        a_copy.add_ops(a, 1)
+        a_copy.next_state(1, a)
         if __DEBUG_MODE__:
             a_copy._DEBUG_perturb = _DEBUG_perturb_retrieve(a).copy()
             _DEBUG_perturb_verify(a_copy)
@@ -304,7 +393,7 @@ def transpose(a, axes=None):
     j = np.transpose(i, axes)
     data = np.ones(i.size)
     multiplier = sp.csr_matrix((data, (np.ravel(i), np.ravel(j))))
-    a_transpose.add_ops(a, multiplier)
+    a_transpose.next_state(multiplier, a)
     if __DEBUG_MODE__:
         a_transpose._DEBUG_perturb = _DEBUG_perturb_retrieve(a).T
         _DEBUG_perturb_verify(a_transpose)
@@ -328,7 +417,7 @@ def concatenate(adarrays, axis=0):
         j = np.arange(i.size)
         data = np.ones(i.size, int)
         multiplier = sp.csr_matrix((data, (i, j)), shape=(marker.size, i.size))
-        concatenated_array.add_ops(a, multiplier)
+        concatenated_array.next_state(multiplier, a)
 
     if __DEBUG_MODE__:
         _DEBUG_perturb_list = []
@@ -362,7 +451,7 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     j = np.ravel(a._ind)
     data = np.ones(i.size, int)
     multiplier = sp.csr_matrix((data, (i, j)), shape=(sum_a.size, a.size))
-    sum_a.add_ops(a, multiplier)
+    sum_a.next_state(multiplier, a)
 
     if __DEBUG_MODE__:
         sum_a._DEBUG_perturb = np.sum(a._DEBUG_perturb, axis, keepdims=keepdims)
@@ -378,8 +467,8 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=False):
 class adarray:
     def __init__(self, array):
         self._base = np.asarray(base(array), np.float64)
-        self._ops = []
         self._ind = np.arange(self.size).reshape(self.shape)
+        self._current_state = InitialState(self)
 
     def __array__(self):
         return self._base
@@ -391,6 +480,24 @@ class adarray:
         else:
             ind = self._ind
         return ind
+
+    @property
+    def _initial_state(self):
+        state = self._current_state
+        while state.prev:
+            state = state.prev
+        return state
+
+    def next_state(self, multiplier, other=None):
+        if other is None:
+            self._current_state = \
+                    self._current_state.next_state(multiplier, None)
+        elif isinstance(other, adarray):
+            self._current_state = \
+                    self._current_state.next_state(multiplier,
+                                                   other._current_state)
+        else:
+            raise NotImplementedError()
 
     @property
     def size(self):
@@ -408,30 +515,6 @@ class adarray:
     def __len__(self):
         return self._base.__len__()
 
-    # -------------------- ops management ----------------- #
-    def i_ops(self):
-        '''
-        Total number of dependent operations
-        '''
-        return len(self._ops)
-
-    def add_ops(self, other, multiplier):
-        '''
-        Add graph link pointing to other -- x += multiplier * other
-        '''
-        if multiplier is not 0:
-            if not isinstance(multiplier, numbers.Number):
-                assert multiplier.shape == (self.size, other.size)
-            self._ops.append((other, other.i_ops(), multiplier))
-
-    def self_ops(self, multiplier):
-        '''
-        Add graph link pointing to itself -- x *= multiplier
-        '''
-        if not isinstance(multiplier, numbers.Number):
-            assert multiplier.shape == (self.size, self.size)
-        self._ops.append((multiplier,))
-
     # ------------------ object operations ----------------- #
 
     def copy(self):
@@ -442,7 +525,7 @@ class adarray:
 
     def reshape(self, shape):
         reshaped = adarray(self._base.reshape(shape))
-        reshaped.add_ops(self, sp.eye(self.size,self.size))
+        reshaped.next_state(sp.eye(self.size,self.size), self)
         if __DEBUG_MODE__:
             reshaped._DEBUG_perturb = self._DEBUG_perturb.reshape(shape)
         return reshaped
@@ -458,7 +541,7 @@ class adarray:
         i = np.arange(j.size)
         multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
                                    shape=(j.size, self.size))
-        self.self_ops(multiplier)
+        self.next_state(multiplier)
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb = _DEBUG_perturb_retrieve(self)[ind]
@@ -492,7 +575,7 @@ class adarray:
     def __add__(self, a):
         if isinstance(a, numbers.Number):
             a_p_b = adarray(self._base + a)
-            a_p_b.add_ops(self, 1)
+            a_p_b.next_state(1, self)
         else:
             b = self
             a_p_b = adarray(base(a) + base(b))
@@ -504,12 +587,12 @@ class adarray:
                 j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
                 a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
                                              shape=(a_p_b.size, a.size))
-                a_p_b.add_ops(a, a_multiplier)
+                a_p_b.next_state(a_multiplier, a)
             if hasattr(b, '_base'):
                 j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
                 b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
                                              shape=(a_p_b.size, b.size))
-                a_p_b.add_ops(b, b_multiplier)
+                a_p_b.next_state(b_multiplier, b)
 
         if __DEBUG_MODE__:
             a_p_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) \
@@ -525,7 +608,7 @@ class adarray:
             self._base += a
         else:
             self._base += a._base
-            self.add_ops(a, 1)
+            self.next_state(1, a)
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb += _DEBUG_perturb_retrieve(a)
@@ -534,7 +617,7 @@ class adarray:
 
     def __neg__(self):
         neg_self = adarray(-self._base)
-        neg_self.add_ops(self, -1)
+        neg_self.next_state(-1, self)
         if __DEBUG_MODE__:
             neg_self._DEBUG_perturb = -_DEBUG_perturb_retrieve(self)
             _DEBUG_perturb_verify(neg_self)
@@ -555,7 +638,7 @@ class adarray:
     def __mul__(self, a):
         if isinstance(a, numbers.Number):
             a_x_b = adarray(self._base * a)
-            a_x_b.add_ops(self, a)
+            a_x_b.next_state(a, self)
             if __DEBUG_MODE__:
                 a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * a
                 _DEBUG_perturb_verify(a_x_b)
@@ -580,12 +663,12 @@ class adarray:
                 j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
                 a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
                                              shape=(a_x_b.size, a.size))
-                a_x_b.add_ops(a, a_multiplier)
+                a_x_b.next_state(a_multiplier, a)
             if hasattr(b, '_base'):
                 j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
                 b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
                                              shape=(a_x_b.size, b.size))
-                a_x_b.add_ops(b, b_multiplier)
+                a_x_b.next_state(b_multiplier, b)
 
             if __DEBUG_MODE__:
                 a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
@@ -599,17 +682,17 @@ class adarray:
     def __imul__(self, a):
         if isinstance(a, numbers.Number):
             self._base *= a
-            self.self_ops(a)
+            self.next_state(a)
             if __DEBUG_MODE__:
                 self._DEBUG_perturb *= a
                 _DEBUG_perturb_verify(self)
         else:
             self._base *= a._base
             multiplier = sp.dia_matrix((np.ravel(a._base), 0), (a.size,a.size))
-            self.self_ops(multiplier)
+            self.next_state(multiplier)
             multiplier = sp.dia_matrix((np.ravel(self._base), 0),
                                        (self.size, self.size))
-            self.add_ops(a, multiplier)
+            self.next_state(multiplier, a)
             if __DEBUG_MODE__:
                 self._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
                                     + base(self) * _DEBUG_perturb_retrieve(a)
@@ -635,7 +718,7 @@ class adarray:
         multiplier = a * np.ravel(self._base)**(a-1)
         multiplier[~np.isfinite(multiplier)] = 0
         multiplier = sp.dia_matrix((multiplier, 0), (self.size,self.size))
-        self_to_a.add_ops(self, multiplier)
+        self_to_a.next_state(multiplier, self)
         if __DEBUG_MODE__:
             self_to_a._DEBUG_perturb = a * self._base**(a-1) \
                                      * _DEBUG_perturb_retrieve(self)
@@ -661,7 +744,7 @@ class adarray:
             i = np.arange(j.size)
             multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
                                        shape=(j.size, self.size))
-            self_i.add_ops(self, multiplier)
+            self_i.next_state(multiplier, self)
 
         if __DEBUG_MODE__:
             self_i._DEBUG_perturb = _DEBUG_perturb_retrieve(self)[ind]
@@ -672,7 +755,7 @@ class adarray:
         data = np.ones(self.size)
         data[self._ind[ind]] = 0
         multiplier = sp.dia_matrix((data, 0), (data.size, data.size))
-        self.self_ops(multiplier)
+        self.next_state(multiplier)
 
         self._base.__setitem__(ind, base(a))
 
@@ -683,7 +766,7 @@ class adarray:
                 i, j = np.ravel(i), np.ravel(j)
                 multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
                                            shape=(self.size, a.size))
-                self.add_ops(a, multiplier)
+                self.next_state(multiplier, a)
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb[ind] = _DEBUG_perturb_retrieve(a)
@@ -700,65 +783,10 @@ class adarray:
     # ------------------ differentiation ------------------ #
 
     def diff(self, u):
-        derivative = self._diff_recurse(u, self.i_ops())
-        self._clear_tmp_product(self.i_ops())
+        derivative = self._current_state.diff_recurse(u._initial_state)
+        self._current_state.clear_self_diff_u()
         return derivative
 
-    # ------------------ recursive functions for differentiation --------------- #
-    def _clear_tmp_product(self, i_ops):
-        if hasattr(self, '_tmp_product') and i_ops in self._tmp_product:
-            del self._tmp_product[i_ops]
-            if not self._tmp_product:   # empty
-                del self._tmp_product
-    
-            if i_ops > 0:
-                op = self._ops[i_ops - 1]
-                if len(op) > 1:  # not self operation
-                    other, i_other_ops, multiplier = op
-                    other._clear_tmp_product(i_other_ops)
-                self._clear_tmp_product(i_ops - 1)
-    
-    def _diff_recurse(self, u, i_ops):
-        if not hasattr(self, '_tmp_product'):
-            self._tmp_product = {}
-        elif i_ops in self._tmp_product:
-            return self._tmp_product[i_ops]
-    
-        if i_ops == 0:  # I got to the bottom
-            if u is self:
-                product = sp.eye(u.size, u.size)
-            else:
-                product = 0
-        else:
-            op = self._ops[i_ops - 1]
-            if len(op) == 1:  # self operation
-                multiplier = op[0]
-                multiplier1 = self._diff_recurse(u, i_ops - 1)
-                product = _multiply_ops(multiplier, multiplier1)
-            else:
-                other, i_other_ops, multiplier = op
-                multiplier1 = other._diff_recurse(u, i_other_ops)
-                other_diff = _multiply_ops(multiplier, multiplier1)
-                self_diff = self._diff_recurse(u, i_ops - 1)
-                product = _add_ops(self_diff, other_diff)
-    
-        self._tmp_product[i_ops] = product
-        return product
-
-# -------------- auxiliary functions for differentiation ------------ #
-def _multiply_ops(op0, op1):
-    if op0 is 0 or op1 is 0:
-        return 0
-    else:
-        return op0 * op1
-
-def _add_ops(op0, op1):
-    if op0 is 0:
-        return op1
-    elif op1 is 0:
-        return op0
-    else:
-        return op0 + op1
 
 # =========================================================== #
 #                                                             #
@@ -860,7 +888,7 @@ class _OperationsTest(unittest.TestCase):
         N = 10
         a = random(N)
         c = exp(a)
-        discrepancy = c.diff(a) - sp.dia_matrix((exp(a._base), 0), (N,N))
+        discrepancy = c.diff(a) - sp.dia_matrix((np.exp(a._base), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
         c = log(a)
@@ -873,10 +901,10 @@ class _OperationsTest(unittest.TestCase):
         a = random(N)
         b = sin(a)
         c = cos(a)
-        discrepancy = b.diff(a) - sp.dia_matrix((cos(a._base), 0), (N,N))
+        discrepancy = b.diff(a) - sp.dia_matrix((np.cos(a._base), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
-        discrepancy = c.diff(a) + sp.dia_matrix((sin(a._base), 0), (N,N))
+        discrepancy = c.diff(a) + sp.dia_matrix((np.sin(a._base), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
@@ -1076,5 +1104,6 @@ class _Burgers1dTest(unittest.TestCase):
         self.assertTrue(res.diff(u).shape == (N-1,N-1))
 
 if __name__ == '__main__':
+    _OperationsTest().testExpLog()
     # _DEBUG_mode()
     unittest.main()

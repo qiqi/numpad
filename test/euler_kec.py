@@ -242,6 +242,8 @@ for i in range(100):
     t += dt
     w0.obliviate()
 
+    print(adarray_count(), adstate_count())
+
     # if i % 10 == 0:
     #     vis(w, geo)
 
