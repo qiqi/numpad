@@ -1,11 +1,13 @@
 import os
 import sys
-sys.path.append(os.path.realpath('..')) # for running unittest
 import unittest
 import numbers
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
+
+sys.path.append(os.path.realpath('..')) # for running unittest
+
 from numpad.adarray import *
 from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
 
