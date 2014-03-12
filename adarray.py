@@ -92,16 +92,21 @@ def base(a):
 
 # --------------------- adarray construction --------------------- #
 def append_docstring_from_numpy(f):
+    '''
+    Decorator for appending numpy docstring to numpad function docstring
+    '''
     def f_more_doc(*args, **kargs):
         return f(*args, **kargs)
 
+    import numpy
     f_name = f.__qualname__.split('.')[-1]
-    numpy_doc = eval('np.{0}'.format(f_name)).__doc__
+    numpy_doc = eval('numpy.{0}'.format(f_name)).__doc__
 
     if not f.__doc__:
         f.__doc__ = '\nOverloaded by numpad, returns adarray.\n'
     f_more_doc.__doc__ = f.__doc__ + numpy_doc
     return f_more_doc
+
 
 @append_docstring_from_numpy
 def zeros(*args, **kargs):
