@@ -42,7 +42,7 @@ def make_array(u_and_p):
 
     return p, u_x, u_y
     
-def cavity(u_and_p, u_and_p0, dt):
+def cavity(u_and_p, u_and_p0, dt, f=0):
     # extend velocity to ghost cells with boundary conditions
     p, u_x, u_y = make_array(u_and_p)
     
@@ -91,7 +91,7 @@ def cavity(u_and_p, u_and_p0, dt):
     
     res = [div_u, du_x_dt + conv_x - visc_x / Re,
                   du_y_dt + conv_y - visc_y / Re]
-    return hstack([ravel(r) for r in res])
+    return hstack([ravel(r) for r in res]) - f
 
 # ---------------------- time integration --------------------- #
 N = 50
@@ -100,16 +100,18 @@ t, dt = 0, 1.
 Re = 10000
 
 u_and_p = zeros(N * (3 * N - 2))
+force = zeros(N * (3 * N - 2))
 
 while True:
     print('t = ', t)
-    u_and_p = solve(cavity, u_and_p, args=(u_and_p, dt),
+    u_and_p = solve(cavity, u_and_p, args=(u_and_p, dt, force),
                     rel_tol=0.05, abs_tol=1E-8)
     if u_and_p._n_Newton == 1:
         break
     elif u_and_p._n_Newton < 4:
         dt *= 2
     t += dt
+    u_and_p.obliviate()
 
 # visualization
 import numpy as np

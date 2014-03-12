@@ -8,14 +8,53 @@ import scipy.sparse.linalg as splinalg
 
 sys.path.append(os.path.realpath('..')) # for running unittest
 
+from numpad.adstate import _add_ops
 from numpad.adarray import *
 from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
+
+class ResidualState(IntermediateState):
+    def __init__(self, prev_state):
+        host = prev_state.host()
+        IntermediateState.__init__(self, host, prev_state, 1, None)
+
+    # --------- recursive functions for adjoint differentiation -------- #
+
+    def clear_f_diff_self(self):
+        IntermediateState.clear_f_diff_self(self)
+        if hasattr(self, 'solution') and self.solution():
+            self.solution().clear_f_diff_self()
+    
+    def adjoint_recurse(self, f):
+        if f is self or hasattr(self, '_f_diff_self') or \
+                self.solution() is None:
+            return IntermediateState.adjoint_recurse(self, f)
+
+        f_diff_soln = self.solution().adjoint_recurse(f)
+        if f_diff_soln is 0:
+            return IntermediateState.adjoint_recurse(self, f)
+        else:
+            if hasattr(f_diff_soln, 'todense'):
+                f_diff_soln = f_diff_soln.todense()
+            f_diff_soln = np.array(f_diff_soln)
+            # inverse of Jacobian matrix
+            self_diff_soln = self.solution().jacobian.T
+            soln_diff_self = splinalg.factorized(self_diff_soln.tocsc())
+            f_diff_self = np.array([-soln_diff_self(b) for b in f_diff_soln])
+            f_diff_self = np.matrix(f_diff_self.reshape(f_diff_soln.shape))
+
+            f_diff_self_0 = IntermediateState.adjoint_recurse(self, f)
+            f_diff_self = _add_ops(f_diff_self, f_diff_self_0)
+
+            self.f_diff_self = f_diff_self
+            return f_diff_self
+
 
 class SolutionState(IntermediateState):
     def __init__(self, host, residual_state, jacobian):
         IntermediateState.__init__(self, host, None, None, None)
-        assert isinstance(residual_state, IntermediateState)
+        assert isinstance(residual_state, ResidualState)
         assert residual_state.size == self.size
+        residual_state.solution = weakref.ref(self)
         self.residual = residual_state
         assert jacobian.shape == (self.size, self.size)
         self.jacobian = jacobian
@@ -24,7 +63,7 @@ class SolutionState(IntermediateState):
         self.residual = None
         self.jacobian = None
 
-    # ------------------ recursive functions for differentiation --------------- #
+    # --------- recursive functions for tangent differentiation -------- #
 
     def clear_self_diff_u(self):
         IntermediateState.clear_self_diff_u(self)
@@ -35,16 +74,19 @@ class SolutionState(IntermediateState):
         if u is self or hasattr(self, '_self_diff_u') or self.residual is None:
             return IntermediateState.diff_recurse(self, u)
 
-        J_u = self.jacobian
-        J_s = self.residual.diff_recurse(u)
-        if J_s is 0:
+        resid_diff_u = self.residual.diff_recurse(u)
+        if resid_diff_u is 0:
             self_diff_u = 0
         else:
-            J_s = np.array(J_s.todense())
-
-            J_u_solve = splinalg.factorized(J_u.tocsc())
-            self_diff_u = np.transpose([-J_u_solve(b) for b in J_s.T])
-            self_diff_u = np.matrix(self_diff_u.reshape(J_s.shape))
+            if hasattr(resid_diff_u, 'todense'):
+                resid_diff_u = resid_diff_u.todense()
+            resid_diff_u = np.array(resid_diff_u)
+            # inverse of Jacobian matrix
+            resid_diff_self = self.jacobian
+            self_diff_resid = splinalg.factorized(resid_diff_self.tocsc())
+            self_diff_u = np.transpose([-self_diff_resid(b) \
+                                        for b in resid_diff_u.T])
+            self_diff_u = np.matrix(self_diff_u.reshape(resid_diff_u.shape))
 
         self.self_diff_u = self_diff_u
         return self_diff_u
@@ -54,6 +96,8 @@ class adsolution(adarray):
     def __init__(self, solution, residual, n_Newton):
         assert isinstance(solution, adarray)
         assert isinstance(residual, adarray)
+
+        residual._current_state = ResidualState(residual._current_state)
 
         adarray.__init__(self, solution._base)
         self._current_state = SolutionState(self, residual._current_state,
@@ -159,14 +203,13 @@ class _Poisson2dTest(unittest.TestCase):
         self.assertAlmostEqual(0,
             abs(2 * u._base - (dudx * dx._base + dudy * dy._base)).max())
 
-        # # solve adjoint equation
-        # J = u.sum()
-        # dJdf = u.diff(f)
+        # solve adjoint equation
+        J = u.sum()
+        dJdf = J.diff(f)
 
-        # self.assertAlmostEqual(0, abs(u._base - dJdf).max())
+        self.assertAlmostEqual(0, abs(np.ravel(u._base) - dJdf).max())
 
 
 if __name__ == '__main__':
-    # a = _Poisson1dTest()
-    # a.testPoisson1d()
+    # _Poisson2dTest().testPoisson2d()
     unittest.main()

@@ -45,7 +45,7 @@ class IntermediateState:
     def next_state(self, multiplier, other_state=None):
         return IntermediateState(self.host(), self, multiplier, other_state)
 
-    # --------------- recursive functions for differentiation --------------- #
+    # --------- recursive functions for tangent differentiation -------- #
 
     def clear_self_diff_u(self):
         if hasattr(self, '_self_diff_u'):
@@ -59,7 +59,7 @@ class IntermediateState:
         if hasattr(self, '_self_diff_u'):
             return self._self_diff_u
 
-        if u is self:             # found u in the tree
+        if u is self:             # found u in the graph
             self_diff_u = sp.eye(u.size, u.size)
         elif self.prev is None:   # initial state, dead end
             self_diff_u = 0
@@ -74,6 +74,45 @@ class IntermediateState:
     
         self._self_diff_u = self_diff_u
         return self_diff_u
+
+    # --------- recursive functions for adjoint differentiation -------- #
+
+    def clear_f_diff_self(self):
+        if hasattr(self, '_f_diff_self'):
+            del self._f_diff_self
+            if hasattr(self, 'next') and self.next():
+                self.next().clear_f_diff_self()
+            for to_item in self.to_list:
+                if to_item():
+                    to_item().clear_f_diff_self()
+    
+    def adjoint_recurse(self, f):
+        if hasattr(self, '_f_diff_self'):
+            return self._f_diff_self
+
+        if f is self:             # found f in the graph
+            f_diff_self = sp.eye(f.size, f.size)
+        else:
+            f_diff_self = 0
+            if hasattr(self, 'next') and self.next():
+                if self.next().other:  # binary operation
+                    next_diff_self = 1
+                else:                  # unitary operation
+                    next_diff_self = self.next().multiplier
+
+                f_diff_next = self.next().adjoint_recurse(f)
+                f_diff_self = _multiply_ops(f_diff_next, next_diff_self)
+
+            for to_item in self.to_list:
+                if to_item():
+                    assert to_item().other is self
+                    f_diff_item = to_item().adjoint_recurse(f)
+                    item_diff_self = to_item().multiplier
+                    f_diff_self_i = _multiply_ops(f_diff_item, item_diff_self)
+                    f_diff_self = _add_ops(f_diff_self, f_diff_self_i)
+
+        self._f_diff_self = f_diff_self
+        return f_diff_self
 
 # -------------- auxiliary functions for differentiation ------------ #
 

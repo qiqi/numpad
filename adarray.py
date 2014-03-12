@@ -700,9 +700,22 @@ class adarray:
 
     # ------------------ differentiation ------------------ #
 
-    def diff(self, u):
-        derivative = self._current_state.diff_recurse(u._initial_state)
-        self._current_state.clear_self_diff_u()
+    def diff(self, u, mode='auto'):
+        if mode == 'auto':
+            if u.size < self.size:
+                mode = 'tangent'
+            else:
+                mode = 'adjoint'
+
+        if mode == 'tangent':
+            derivative = self._current_state.diff_recurse(u._initial_state)
+            self._current_state.clear_self_diff_u()
+        elif mode == 'adjoint':
+            derivative = u._initial_state.adjoint_recurse(self._current_state)
+            u._initial_state.clear_f_diff_self()
+        else:
+            raise NotImplementedError()
+
         return derivative
 
 
@@ -722,10 +735,14 @@ class _ManipulationTest(unittest.TestCase):
         e = array([[a, b], [c, d]])
 
         I, O = sp.eye(N,N), sp.eye(N,N) * 0
-        self.assertEqual(0, (e.diff(a) - sp.vstack([I, O, O, O])).nnz)
-        self.assertEqual(0, (e.diff(b) - sp.vstack([O, I, O, O])).nnz)
-        self.assertEqual(0, (e.diff(c) - sp.vstack([O, O, I, O])).nnz)
-        self.assertEqual(0, (e.diff(d) - sp.vstack([O, O, O, I])).nnz)
+        self.assertEqual(0, (e.diff(a, 'tangent') - sp.vstack([I,O,O,O])).nnz)
+        self.assertEqual(0, (e.diff(a, 'adjoint') - sp.vstack([I,O,O,O])).nnz)
+        self.assertEqual(0, (e.diff(b, 'tangent') - sp.vstack([O,I,O,O])).nnz)
+        self.assertEqual(0, (e.diff(b, 'adjoint') - sp.vstack([O,I,O,O])).nnz)
+        self.assertEqual(0, (e.diff(c, 'tangent') - sp.vstack([O,O,I,O])).nnz)
+        self.assertEqual(0, (e.diff(c, 'adjoint') - sp.vstack([O,O,I,O])).nnz)
+        self.assertEqual(0, (e.diff(d, 'tangent') - sp.vstack([O,O,O,I])).nnz)
+        self.assertEqual(0, (e.diff(d, 'adjoint') - sp.vstack([O,O,O,I])).nnz)
 
     def testTranspose(self):
         N = 10
@@ -737,8 +754,10 @@ class _ManipulationTest(unittest.TestCase):
         c_diff_a = sp.csr_matrix((np.ones(N), (i,j)), shape=(2*N, N))
         i, j = np.arange(N) * 2 + 1, np.arange(N)
         c_diff_b = sp.csr_matrix((np.ones(N), (i,j)), shape=(2*N, N))
-        self.assertEqual(0, (c.diff(a) - c_diff_a).nnz)
-        self.assertEqual(0, (c.diff(b) - c_diff_b).nnz)
+        self.assertEqual(0, (c.diff(a, 'tangent') - c_diff_a).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - c_diff_a).nnz)
+        self.assertEqual(0, (c.diff(b, 'tangent') - c_diff_b).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - c_diff_b).nnz)
 
 
 class _IndexingTest(unittest.TestCase):
@@ -751,7 +770,8 @@ class _IndexingTest(unittest.TestCase):
         i = np.arange(N)[i]
         j = np.arange(len(i))
         J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N,len(i))).T
-        self.assertEqual(0, (b.diff(a) - J).nnz)
+        self.assertEqual(0, (b.diff(a, 'tangent') - J).nnz)
+        self.assertEqual(0, (b.diff(a, 'adjoint') - J).nnz)
 
 
 class _OperationsTest(unittest.TestCase):
@@ -760,26 +780,34 @@ class _OperationsTest(unittest.TestCase):
         a = random(N)
         b = random(N)
         c = a + b
-        self.assertEqual(0, (c.diff(a) - sp.eye(N,N)).nnz)
-        self.assertEqual(0, (c.diff(b) - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(a, 'tangent') - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(b, 'tangent') - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - sp.eye(N,N)).nnz)
 
     def testSub(self):
         N = 1000
         a = random(N)
         b = random(N)
         c = a - b
-        self.assertEqual(0, (c.diff(a) - sp.eye(N,N)).nnz)
-        self.assertEqual(0, (c.diff(b) + sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(a, 'tangent') - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(b, 'tangent') + sp.eye(N,N)).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') + sp.eye(N,N)).nnz)
 
     def testMul(self):
         N = 1000
         a = random(N)
         b = random(N)
         c = a * b * 5
-        self.assertEqual(0,
-                (c.diff(a) - 5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
-        self.assertEqual(0,
-                (c.diff(b) - 5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
+        self.assertEqual(0, (c.diff(a, 'tangent') - \
+                5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - \
+                5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
+        self.assertEqual(0, (c.diff(b, 'tangent') - \
+                5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - \
+                5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
 
     def testDiv(self):
         N = 10
@@ -869,19 +897,28 @@ class _Poisson1dTest(unittest.TestCase):
         print(time.clock() - t0)
 
         t0 = time.clock()
-        dRdf = res.diff(f)
-        print(time.clock() - t0)
-        self.assertEqual((dRdf - sp.eye(N-1,N-1)).nnz, 0)
+        dRdf_tan = res.diff(f, 'tangent')
+        print('tangent', time.clock() - t0)
+        t0 = time.clock()
+        dRdf_adj = res.diff(f, 'adjoint')
+        print('adjoint', time.clock() - t0)
+        self.assertEqual((dRdf_tan - sp.eye(N-1,N-1)).nnz, 0)
+        self.assertEqual((dRdf_adj - sp.eye(N-1,N-1)).nnz, 0)
 
         t0 = time.clock()
-        dRdu = res.diff(u)
+        dRdu_tan = res.diff(u, 'tangent')
+        print('tangent', time.clock() - t0)
+        t0 = time.clock()
+        dRdu_adj = res.diff(u, 'adjoint')
+        print('adjoint', time.clock() - t0)
         print(time.clock() - t0)
 
         lapl = -2 * sp.eye(N-1,N-1) \
              + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
              + sp.dia_matrix((np.ones(N-1), -1), (N-1,N-1))
         lapl /= dx**2
-        self.assertEqual((dRdu - lapl).nnz, 0)
+        self.assertEqual((dRdu_tan - lapl).nnz, 0)
+        self.assertEqual((dRdu_adj - lapl).nnz, 0)
 
 
 class _Poisson2dTest(unittest.TestCase):
@@ -916,13 +953,15 @@ class _Poisson2dTest(unittest.TestCase):
         print(time.clock() - t0)
 
         t0 = time.clock()
-        dRdf = res.diff(f)
+        dRdf = res.diff(f, 'tangent')
+        dRdf = res.diff(f, 'adjoint')
         print(time.clock() - t0)
 
         self.assertEqual((dRdf - sp.eye((N-1) * (M-1), (N-1) * (M-1))).nnz, 0)
 
         t0 = time.clock()
-        dRdu = res.diff(u)
+        dRdu_tan = res.diff(u, 'tangent')
+        dRdu_adj = res.diff(u, 'adjoint')
         print(time.clock() - t0)
 
         lapl_i = -2 * sp.eye(N-1,N-1) \
@@ -933,7 +972,8 @@ class _Poisson2dTest(unittest.TestCase):
                + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
         lapl = sp.kron(lapl_i, sp.eye(M-1,M-1)) / dx**2 \
              + sp.kron(sp.eye(N-1,N-1), lapl_j) / dy**2
-        self.assertEqual((dRdu - lapl).nnz, 0)
+        self.assertEqual((dRdu_tan - lapl).nnz, 0)
+        self.assertEqual((dRdu_adj - lapl).nnz, 0)
 
         # pylab.figure()
         # pylab.spy(lapl, marker='.')
@@ -974,14 +1014,22 @@ class _Poisson3dTest(unittest.TestCase):
         print(time.clock() - t0)
 
         t0 = time.clock()
-        dRdf = res.diff(f)
-        print(time.clock() - t0)
+        dRdf_tan = res.diff(f, 'tangent')
+        print('tangent', time.clock() - t0)
+        t0 = time.clock()
+        dRdf_adj = res.diff(f, 'adjoint')
+        print('tangent', time.clock() - t0)
+        print('adjoint', time.clock() - t0)
 
-        self.assertEqual((dRdf - sp.eye(*dRdf.shape)).nnz, 0)
+        self.assertEqual((dRdf_tan - sp.eye(*dRdf_tan.shape)).nnz, 0)
+        self.assertEqual((dRdf_tan - sp.eye(*dRdf_adj.shape)).nnz, 0)
 
         t0 = time.clock()
-        dRdu = res.diff(u)
-        print(time.clock() - t0)
+        dRdu_tan = res.diff(u, 'tangent')
+        print('tangent', time.clock() - t0)
+        t0 = time.clock()
+        dRdu_adj = res.diff(u, 'adjoint')
+        print('adjoint', time.clock() - t0)
 
         lapl_i = -2 * sp.eye(N-1, N-1) \
                + sp.dia_matrix((np.ones(N-1), 1), (N-1,N-1)) \
@@ -998,7 +1046,8 @@ class _Poisson3dTest(unittest.TestCase):
         lapl = sp.kron(sp.kron(lapl_i, I_j), I_k) / dx**2 \
              + sp.kron(sp.kron(I_i, lapl_j), I_k) / dy**2 \
              + sp.kron(sp.kron(I_i, I_j), lapl_k) / dz**2
-        self.assertEqual((dRdu - lapl).nnz, 0)
+        self.assertEqual((dRdu_tan - lapl).nnz, 0)
+        self.assertEqual((dRdu_adj - lapl).nnz, 0)
 
         # pylab.figure()
         # pylab.spy(lapl, marker='.')
@@ -1019,7 +1068,8 @@ class _Burgers1dTest(unittest.TestCase):
         u = random(N-1)
         f = self.firstOrderFlux(u)
         res = (f[1:] - f[:-1]) / dx
-        self.assertTrue(res.diff(u).shape == (N-1,N-1))
+        self.assertTrue(res.diff(u, 'tangent').shape == (N-1,N-1))
+        self.assertTrue(res.diff(u, 'adjoint').shape == (N-1,N-1))
 
 if __name__ == '__main__':
     _OperationsTest().testExpLog()

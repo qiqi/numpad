@@ -3,10 +3,9 @@ from cavity import *
 print('Solving the adjoint')
 
 # adjoint of kinetic energy
-functional = base(u_and_p).copy()
-functional[:N*N] = 0
+kinetic_energy = 0.5 * sum(u_and_p[N*N:]**2)
 
-adj = u_and_p.adjoint(functional, u_and_p._residual)
+adj = np.array(kinetic_energy.diff(force)).ravel()
 adj_x = adj[N*N:N*(2*N-1)].reshape([N-1,N])
 adj_y = adj[N*(2*N-1):].reshape([N,N-1])
 
