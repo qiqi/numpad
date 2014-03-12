@@ -86,22 +86,39 @@ def base(a):
         return a._base
 
 # --------------------- adarray construction --------------------- #
+def append_docstring_from_numpy(f):
+    def f_more_doc(*args, **kargs):
+        return f(*args, **kargs)
 
+    f_name = f.__qualname__.split('.')[-1]
+    numpy_doc = eval('np.{0}'.format(f_name)).__doc__
+
+    if not f.__doc__:
+        f.__doc__ = '\nOverloaded by numpad, returns adarray.\n'
+    f_more_doc.__doc__ = f.__doc__ + numpy_doc
+    return f_more_doc
+
+@append_docstring_from_numpy
 def zeros(*args, **kargs):
     return array(np.zeros(*args, **kargs))
 
+@append_docstring_from_numpy
 def ones(*args, **kargs):
     return array(np.ones(*args, **kargs))
 
+@append_docstring_from_numpy
 def random(*args, **kargs):
     return array(np.random.random(*args, **kargs))
 
+@append_docstring_from_numpy
 def linspace(*args, **kargs):
     return array(np.linspace(*args, **kargs))
 
+@append_docstring_from_numpy
 def arange(*args, **kargs):
     return array(np.arange(*args, **kargs))
 
+@append_docstring_from_numpy
 def loadtxt(*args, **kargs):
     return array(np.loadtxt(*args, **kargs))
 
@@ -667,68 +684,65 @@ class adarray:
     # ------------------ differentiation ------------------ #
 
     def diff(self, u):
-        derivative = _diff_recurse(self, u, self.i_ops())
-        _clear_tmp_product(self, self.i_ops())
+        derivative = self._diff_recurse(u, self.i_ops())
+        self._clear_tmp_product(self.i_ops())
         return derivative
 
-# ------------------ recursive functions for differentiation --------------- #
-def _clear_tmp_product(f, i_f_ops):
-    if hasattr(f, '_tmp_product') and i_f_ops in f._tmp_product:
-        del f._tmp_product[i_f_ops]
-        if not f._tmp_product:   # empty
-            del f._tmp_product
-
-        if i_f_ops > 0:
-            op = f._ops[i_f_ops - 1]
+    # ------------------ recursive functions for differentiation --------------- #
+    def _clear_tmp_product(self, i_ops):
+        if hasattr(self, '_tmp_product') and i_ops in self._tmp_product:
+            del self._tmp_product[i_ops]
+            if not self._tmp_product:   # empty
+                del self._tmp_product
+    
+            if i_ops > 0:
+                op = self._ops[i_ops - 1]
+                if len(op) > 1:  # not self operation
+                    other, i_other_ops, multiplier = op
+                    other._clear_tmp_product(i_other_ops)
+                self._clear_tmp_product(i_ops - 1)
+    
+    def _diff_recurse(self, u, i_ops):
+        if not hasattr(self, '_tmp_product'):
+            self._tmp_product = {}
+        elif i_ops in self._tmp_product:
+            return self._tmp_product[i_ops]
+    
+        if i_ops == 0:  # I got to the bottom
+            if u is self:
+                product = sp.eye(u.size, u.size)
+            else:
+                product = 0
+        else:
+            op = self._ops[i_ops - 1]
             if len(op) == 1:  # self operation
-                _clear_tmp_product(f, i_f_ops - 1)
+                multiplier = op[0]
+                multiplier1 = self._diff_recurse(u, i_ops - 1)
+                product = _multiply_ops(multiplier, multiplier1)
             else:
                 other, i_other_ops, multiplier = op
-                _clear_tmp_product(other, i_other_ops)
-                _clear_tmp_product(f, i_f_ops - 1)
+                multiplier1 = other._diff_recurse(u, i_other_ops)
+                other_diff = _multiply_ops(multiplier, multiplier1)
+                self_diff = self._diff_recurse(u, i_ops - 1)
+                product = _add_ops(self_diff, other_diff)
+    
+        self._tmp_product[i_ops] = product
+        return product
 
-def _diff_recurse(f, u, i_f_ops):
-    def multiply_ops(op0, op1):
-        if op0 is 0 or op1 is 0:
-            return 0
-        else:
-            return op0 * op1
-
-    def add_ops(op0, op1):
-        if op0 is 0:
-            return op1
-        elif op1 is 0:
-            return op0
-        else:
-            return op0 + op1
-
-    # function starts here
-    if not hasattr(f, '_tmp_product'):
-        f._tmp_product = {}
-    elif i_f_ops in f._tmp_product:
-        return f._tmp_product[i_f_ops]
-
-    if i_f_ops == 0:  # I got to the bottom
-        if u is f:
-            product = sp.eye(u.size, u.size)
-        else:
-            product = 0
+# -------------- auxiliary functions for differentiation ------------ #
+def _multiply_ops(op0, op1):
+    if op0 is 0 or op1 is 0:
+        return 0
     else:
-        op = f._ops[i_f_ops - 1]
-        if len(op) == 1:  # self operation
-            multiplier = op[0]
-            multiplier1 = _diff_recurse(f, u, i_f_ops - 1)
-            product = multiply_ops(multiplier, multiplier1)
-        else:
-            other, i_other_ops, multiplier = op
-            multiplier1 = _diff_recurse(other, u, i_other_ops)
-            other_diff = multiply_ops(multiplier, multiplier1)
-            this_diff = _diff_recurse(f, u, i_f_ops - 1)
-            product = add_ops(this_diff, other_diff)
+        return op0 * op1
 
-    f._tmp_product[i_f_ops] = product
-    return product
-
+def _add_ops(op0, op1):
+    if op0 is 0:
+        return op1
+    elif op1 is 0:
+        return op0
+    else:
+        return op0 + op1
 
 # =========================================================== #
 #                                                             #

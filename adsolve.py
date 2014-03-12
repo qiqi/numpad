@@ -7,7 +7,6 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
 from numpad.adarray import *
-from numpad.adarray import _diff_recurse, _clear_tmp_product
 from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
 
 class adsolution(adarray):
@@ -21,26 +20,6 @@ class adsolution(adarray):
 
         _DEBUG_perturb_new(self)
 
-    def adjoint(self, functional, s):
-        assert functional.size == self.size
-        J_u = self._res_diff_solulion.tocsc()
-
-        _clear_tmp_product(self._residual, self._residual_ops)
-        J_s = _diff_recurse(self._residual, s, self._residual_ops)
-
-        c_residual = splinalg.spsolve(J_u.T, base(functional).ravel(),
-                                      use_umfpack=False)
-        return -(J_s.T * c_residual).reshape(s.shape)
-
-    def tangent(self, u):
-        J_u = self._res_diff_solulion.tocsr()
-
-        _clear_tmp_product(self._residual, self._residual_ops)
-        J_s = _diff_recurse(self._residual, u, self._residual_ops)
-
-        d_self_du = -splinalg.spsolve(J_u, J_s, use_umfpack=False)
-        return d_self_du.reshape(self.shape + u.shape)
-
     def obliviate(self):
         del self._residual
         del self._residual_ops
@@ -48,6 +27,33 @@ class adsolution(adarray):
         del self._res_norm
         del self._res_diff_solulion
 
+    # ------------------ recursive functions for differentiation --------------- #
+    def _clear_tmp_product(self, i_ops):
+        adarray._clear_tmp_product(self, i_ops)
+        if i_ops == 0 and hasattr(self, '_residual'):
+            self._residual._clear_tmp_product(self._residual_ops)
+    
+    def _diff_recurse(self, u, i_ops):
+        if i_ops > 0 or u is self:
+            return adarray._diff_recurse(self, u, i_ops)
+        elif not hasattr(self, '_residual'):
+            return 0
+
+        if not hasattr(self, '_tmp_product'):
+            self._tmp_product = {}
+        elif 0 in self._tmp_product:  # 0 is i_ops
+            return self._tmp_product[0]
+    
+        J_u = self._res_diff_solulion.tocsr()
+        J_s = self._residual._diff_recurse(u, self._residual_ops)
+        J_s = np.array(J_s.todense())
+
+        J_u_solve = splinalg.factorized(J_u.tocsc())
+        d_self_du = np.transpose([-J_u_solve(b) for b in J_s.T])
+        product = np.matrix(d_self_du.reshape(J_s.shape))
+
+        self._tmp_product[0] = product
+        return product
 
 
 def solve(func, u0, args=(), kargs={},
@@ -101,11 +107,12 @@ class _Poisson1dTest(unittest.TestCase):
         self.assertAlmostEqual(0, np.abs(u._base - 0.5 * x * (1 - x)).max())
 
         # solve tangent equation
-        dudx = u.tangent(dx)
+        dudx = np.array(u.diff(dx)).reshape(u.shape)
         self.assertAlmostEqual(0, np.abs(dudx - 2 * u._base / dx._base).max())
 
         # solve adjoint equation
-        dJdf = u.adjoint(ones(N-1), f)
+        J = u.sum()
+        dJdf = J.diff(f)
         self.assertAlmostEqual(0, np.abs(dJdf - u._base).max())
 
 
@@ -133,16 +140,17 @@ class _Poisson2dTest(unittest.TestCase):
         y = np.linspace(0, 1, M+1)[1:-1]
 
         # solve tangent equation
-        dudx = u.tangent(dx)
-        dudy = u.tangent(dy)
+        dudx = np.array(u.diff(dx)).reshape(u.shape)
+        dudy = np.array(u.diff(dy)).reshape(u.shape)
 
         self.assertAlmostEqual(0,
-            abs(u._base - .5 * (dudx * dx._base + dudy * dy._base)).max())
+            abs(2 * u._base - (dudx * dx._base + dudy * dy._base)).max())
 
-        # solve adjoint equation
-        dJdf = u.adjoint(ones([N-1, M-1]), f)
+        # # solve adjoint equation
+        # J = u.sum()
+        # dJdf = u.diff(f)
 
-        self.assertAlmostEqual(0, abs(u._base - dJdf).max())
+        # self.assertAlmostEqual(0, abs(u._base - dJdf).max())
 
 
 if __name__ == '__main__':
