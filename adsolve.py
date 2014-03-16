@@ -56,7 +56,8 @@ class SolutionState(IntermediateState):
         assert residual_state.size == self.size
         residual_state.solution = weakref.ref(self)
         self.residual = residual_state
-        assert jacobian.shape == (self.size, self.size)
+        if not isinstance(jacobian, numbers.Number):
+            assert jacobian.shape == (self.size, self.size)
         self.jacobian = jacobian
 
     def obliviate(self):
@@ -123,10 +124,14 @@ def solve(func, u0, args=(), kargs={},
         res_norm = np.linalg.norm(res._base, np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
+        if not np.isfinite(res_norm):
+            break
+
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
             return adsolution(u, res, i_Newton + 1)
+
         # Newton update
         J = res.diff(u).tocsr()
         minus_du = splinalg.spsolve(J, np.ravel(res._base), use_umfpack=False)

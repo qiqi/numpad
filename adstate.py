@@ -11,11 +11,17 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 # --------------- intermediate states and their operations ---------------- #
 
+g_state_count = 0
+
 def InitialState(host):
     return IntermediateState(host, None, None, None)
 
 class IntermediateState:
     def __init__(self, host, prev_state, multiplier, other_state):
+        global g_state_count
+        self._state_id = g_state_count
+        g_state_count += 1
+
         self.host = weakref.ref(host)
         self.size = host.size
 

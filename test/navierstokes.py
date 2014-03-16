@@ -250,6 +250,7 @@ elif geometry == 'bend':
     
     x, y = np.vstack([x0, x, x1]), np.vstack([y0, y, y1])
 
+np.save('geo.npy', base(array([x, y])))
 geo = geo2d([x, y])
 
 t, dt = 0, 1./Nj
