@@ -17,13 +17,16 @@ def InitialState(host):
     return IntermediateState(host, None, None, None)
 
 class IntermediateState:
-    def __init__(self, host, prev_state, multiplier, other_state):
+    def __init__(self, host, prev_state, multiplier, other_state,
+                 op_name=''):
         global g_state_count
         self._state_id = g_state_count
         g_state_count += 1
 
         self.host = weakref.ref(host)
         self.size = host.size
+
+        self.op_name = op_name
 
         self.prev = prev_state
         if prev_state is not None:
@@ -48,8 +51,9 @@ class IntermediateState:
 
         self.to_list = []
 
-    def next_state(self, multiplier, other_state=None):
-        return IntermediateState(self.host(), self, multiplier, other_state)
+    def next_state(self, multiplier, other_state=None, op_name=''):
+        return IntermediateState(self.host(), self, multiplier, other_state,
+                                 op_name)
 
     # --------- recursive functions for tangent differentiation -------- #
 

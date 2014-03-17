@@ -12,6 +12,9 @@ def _clear_dot_name(state):
         if hasattr(state, 'residual') and state.residual:
             _clear_dot_name(state.residual)
 
+def _dot_edge(fro, to, tag, other_attr=''):
+    return '{0} -> {1} [label="{2}", {3}];\n'.format(fro, to, tag, other_attr)
+
 def _dot_string(state):
     dot_string = ''
     if not hasattr(state, '_dot_name'):
@@ -19,20 +22,20 @@ def _dot_string(state):
         if state.other:
             sub_string = _dot_string(state.other)
             dot_string = dot_string \
-                       + '{0} -> {1};\n'.format(state._dot_name,
-                                                state.other._dot_name) \
+                       + _dot_edge(state._dot_name, state.other._dot_name,
+                                   state.op_name) \
                        + sub_string
         if state.prev:
             sub_string = _dot_string(state.prev)
             dot_string = dot_string \
-                       + '{0} -> {1};\n'.format(state._dot_name,
-                                                state.prev._dot_name) \
+                       + _dot_edge(state._dot_name, state.prev._dot_name,
+                                   state.op_name) \
                        + sub_string
         if hasattr(state, 'residual') and state.residual:
             sub_string = _dot_string(state.residual)
             dot_string = dot_string \
-                       + '{0} -> {1} [color=red];\n'.format(state._dot_name,
-                                                state.residual._dot_name) \
+                       + _dot_edge(state._dot_name, state.residual._dot_name,
+                                   state.op_name, 'color=red') \
                        + sub_string
     return dot_string
 
@@ -46,7 +49,9 @@ if __name__ == '__main__':
 
     def extend(w_interior):
         w = zeros([4, Ni+2, Nj+2])
+        print('setting S{0}'.format(w_interior._current_state._state_id))
         w[:,1:-1,1:-1] = w_interior.reshape([4, Ni, Nj])
+        print('set S{0}'.format(w._current_state._state_id))
         # inlet
         # rho, u, v, E, p = primative(w[:,1,1:-1])
         # c = sqrt(1.4 * p / rho)
@@ -76,6 +81,7 @@ if __name__ == '__main__':
         w[2,:,0] *= -1
         w[:,:,-1] = w[:,:,-2]
         w[2,:,-1] *= -1
+        print('returning S{0}'.format(w._current_state._state_id))
         return w
         
     def primative(w):
@@ -88,9 +94,7 @@ if __name__ == '__main__':
         
     def euler(w, w0, dt):
         import numpad
-        print('before extend:', numpad.adstate.g_state_count)
         w_ext = extend(w)
-        print('after extend:', numpad.adstate.g_state_count)
         # rho, u, v, E, p = primative(w_ext)
         # cell center flux
         # F = array([rho*u, rho*u**2 + p, rho*u*v, u*(E + p)])
@@ -107,6 +111,7 @@ if __name__ == '__main__':
         # Fy = -0.5 * C * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
         # # residual
         divF = (Fx[:,1:,:] - Fx[:,:-1,:]) # / dx + (Fy[:,:,1:] - Fy[:,:,:-1]) / dy
+        print('divF is S{0}'.format(divF._current_state._state_id))
         return (w - w0) / dt + ravel(divF)
 
     # ---------------------- time integration --------------------- #
@@ -123,7 +128,7 @@ if __name__ == '__main__':
     
     w = ravel(w)
     
-    for i in range(5):
+    for i in range(2):
         print('t = ', t)
         w = solve(euler, w, args=(w, dt), rel_tol=1E-9, abs_tol=1E-7)
         t += dt
