@@ -462,7 +462,7 @@ class adarray:
         i = np.arange(j.size)
         multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
                                    shape=(j.size, self.size))
-        self.next_state(multiplier, 'sort')
+        self.next_state(multiplier, op_name='sort')
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb = _DEBUG_perturb_retrieve(self)[ind]
