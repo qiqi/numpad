@@ -44,6 +44,8 @@ class interp:
         return x0, x1, y0, y1
 
     def __call__(self, x):
+        shape = x.shape
+        x = ravel(x)
         x0, x1, y0, y1 = self.find(x)
 
         x_x0 = (x - x0) / (x1 - x0)
@@ -53,7 +55,7 @@ class interp:
             slope = (y1[:,0] - y0[:,0]) / (x1 - x0)
             y += (x_x0 - 2*x_x0**2 + x_x0**3) * (y0[:,1] - slope) * (x1 - x0) \
                + (x_x1 - 2*x_x1**2 + x_x1**3) * (y1[:,1] - slope) * (x0 - x1)
-        return y
+        return y.reshape(shape)
 
     def derivative(self, x):
         x0, x1, y0, y1 = self.find(x)

@@ -446,7 +446,8 @@ class adarray:
 
     def reshape(self, shape):
         reshaped = adarray(self._base.reshape(shape))
-        reshaped.next_state(sp.eye(self.size,self.size), self, 'reshape')
+        if self.size > 0:
+            reshaped.next_state(sp.eye(self.size,self.size), self, 'reshape')
         if __DEBUG_MODE__:
             reshaped._DEBUG_perturb = self._DEBUG_perturb.reshape(shape)
         return reshaped
@@ -504,12 +505,12 @@ class adarray:
             multiplier = np.ones(a_p_b.shape)
             i = np.arange(a_p_b.size)
 
-            if hasattr(a, '_base'):
+            if hasattr(a, '_base') and multiplier.size > 0:
                 j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
                 a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
                                              shape=(a_p_b.size, a.size))
                 a_p_b.next_state(a_multiplier, a, '+')
-            if hasattr(b, '_base'):
+            if hasattr(b, '_base') and multiplier.size > 0:
                 j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
                 b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
                                              shape=(a_p_b.size, b.size))
@@ -580,12 +581,12 @@ class adarray:
 
             i = np.arange(a_x_b.size)
 
-            if hasattr(a, '_base'):
+            if hasattr(a, '_base') and a_x_b.size > 0:
                 j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
                 a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
                                              shape=(a_x_b.size, a.size))
                 a_x_b.next_state(a_multiplier, a, '*')
-            if hasattr(b, '_base'):
+            if hasattr(b, '_base') and a_x_b.size > 0:
                 j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
                 b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
                                              shape=(a_x_b.size, b.size))
@@ -637,9 +638,10 @@ class adarray:
             return NotImplemented
         self_to_a = adarray(self._base ** a)
         multiplier = a * np.ravel(self._base)**(a-1)
-        multiplier[~np.isfinite(multiplier)] = 0
-        multiplier = sp.dia_matrix((multiplier, 0), (self.size,self.size))
-        self_to_a.next_state(multiplier, self, '**')
+        if multiplier.size > 0:
+            multiplier[~np.isfinite(multiplier)] = 0
+            multiplier = sp.dia_matrix((multiplier, 0), (self.size,self.size))
+            self_to_a.next_state(multiplier, self, '**')
         if __DEBUG_MODE__:
             self_to_a._DEBUG_perturb = a * self._base**(a-1) \
                                      * _DEBUG_perturb_retrieve(self)
