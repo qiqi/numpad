@@ -40,6 +40,8 @@ def _dot_string(state):
     return dot_string
 
 def dot(f):
+    from numpad.adgarbagecollect import collect
+    collect(f._current_state)
     dot_string = _dot_string(f._current_state)
     _clear_dot_name(f._current_state)
     return 'digraph G{\n' + dot_string + '}\n'
@@ -49,39 +51,36 @@ if __name__ == '__main__':
 
     def extend(w_interior):
         w = zeros([4, Ni+2, Nj+2])
-        print('setting S{0}'.format(w_interior._current_state._state_id))
         w[:,1:-1,1:-1] = w_interior.reshape([4, Ni, Nj])
-        print('set S{0}'.format(w._current_state._state_id))
         # inlet
-        # rho, u, v, E, p = primative(w[:,1,1:-1])
-        # c = sqrt(1.4 * p / rho)
-        # mach = u / c
-        # rhot = rho * (1 + 0.2 * mach**2)**2.5
-        # pt = p * (1 + 0.2 * mach**2)**3.5
+        rho, u, v, E, p = primative(w[:,1,1:-1])
+        c = sqrt(1.4 * p / rho)
+        mach = u / c
+        rhot = rho * (1 + 0.2 * mach**2)**2.5
+        pt = p * (1 + 0.2 * mach**2)**3.5
     
-        # d_rho = 1 - rho
-        # d_pt = pt_in - pt
-        # d_u = d_pt / (rho * (u + c))
-        # d_p = rho * c * d_u
+        d_rho = 1 - rho
+        d_pt = pt_in - pt
+        d_u = d_pt / (rho * (u + c))
+        d_p = rho * c * d_u
     
-        # relax = 0.5
-        # rho = rho + relax * d_rho
-        # u = u + relax * d_u
-        # p = p + relax * d_p
-        # w[0,0,1:-1] = rho
-        # w[1,0,1:-1] = rho * u
-        # w[2,0,1:-1] = 0
-        # w[3,0,1:-1] = p / 0.4 + 0.5 * rho * u**2
-        # # outlet
-        # w[:3,-1,1:-1] = w[:3,-2,1:-1]
-        # w[3,-1,1:-1] = p_out / (1.4 - 1) + \
-        #             0.5 * (w[1,-1,1:-1]**2 + w[2,-1,1:-1]**2) / w[0,-1,1:-1]
+        relax = 0.5
+        rho = rho + relax * d_rho
+        u = u + relax * d_u
+        p = p + relax * d_p
+        w[0,0,1:-1] = rho
+        w[1,0,1:-1] = rho * u
+        w[2,0,1:-1] = 0
+        w[3,0,1:-1] = p / 0.4 + 0.5 * rho * u**2
+        # outlet
+        w[:3,-1,1:-1] = w[:3,-2,1:-1]
+        w[3,-1,1:-1] = p_out / (1.4 - 1) + \
+                    0.5 * (w[1,-1,1:-1]**2 + w[2,-1,1:-1]**2) / w[0,-1,1:-1]
         # walls
         w[:,:,0] = w[:,:,1]
         w[2,:,0] *= -1
         w[:,:,-1] = w[:,:,-2]
         w[2,:,-1] *= -1
-        print('returning S{0}'.format(w._current_state._state_id))
         return w
         
     def primative(w):
@@ -95,23 +94,22 @@ if __name__ == '__main__':
     def euler(w, w0, dt):
         import numpad
         w_ext = extend(w)
-        # rho, u, v, E, p = primative(w_ext)
+        rho, u, v, E, p = primative(w_ext)
         # cell center flux
-        # F = array([rho*u, rho*u**2 + p, rho*u*v, u*(E + p)])
-        # G = array([rho*u, rho*u*v, rho*v**2 + p, v*(E + p)])
-        # # interface flux
-        # Fx = 0.5 * (F[:,1:,1:-1] + F[:,:-1,1:-1])
-        # Fy = 0.5 * (F[:,1:-1,1:] + F[:,1:-1,:-1])
-        # # numerical viscosity
-        # C = 300
-        # Fx -= 0.5 * C * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
-        # Fy -= 0.5 * C * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+        F = array([rho*u, rho*u**2 + p, rho*u*v, u*(E + p)])
+        G = array([rho*u, rho*u*v, rho*v**2 + p, v*(E + p)])
+        # interface flux
+        Fx = 0.5 * (F[:,1:,1:-1] + F[:,:-1,1:-1])
+        Fy = 0.5 * (F[:,1:-1,1:] + F[:,1:-1,:-1])
+        # numerical viscosity
         C = 300
-        Fx = -0.5 * C * (w_ext[:,1:,1:-1] )# - w_ext[:,:-1,1:-1])
-        # Fy = -0.5 * C * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+        Fx -= 0.5 * C * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
+        Fy -= 0.5 * C * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+        C = 300
+        Fx = -0.5 * C * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
+        Fy = -0.5 * C * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
         # # residual
-        divF = (Fx[:,1:,:] - Fx[:,:-1,:]) # / dx + (Fy[:,:,1:] - Fy[:,:,:-1]) / dy
-        print('divF is S{0}'.format(divF._current_state._state_id))
+        divF = (Fx[:,1:,:] - Fx[:,:-1,:]) / dx + (Fy[:,:,1:] - Fy[:,:,:-1]) / dy
         return (w - w0) / dt + ravel(divF)
 
     # ---------------------- time integration --------------------- #
@@ -122,11 +120,11 @@ if __name__ == '__main__':
     pt_in = 1.2E5
     p_out = 1E5
     
-    w = zeros([4, Ni, Nj])
-    w[0] = 1
-    w[3] = 1E5 / (1.4 - 1)
+    w0 = zeros([4, Ni, Nj])
+    w0[0] = 1
+    w0[3] = 1E5 / (1.4 - 1)
     
-    w = ravel(w)
+    w = ravel(w0)
     
     for i in range(2):
         print('t = ', t)

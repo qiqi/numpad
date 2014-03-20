@@ -227,9 +227,9 @@ geometry = 'bend'
 if geometry == 'nozzle':
     Ni, Nj = 50, 20
     # Ni, Nj = 100, 40
-    x = np.linspace(-15,25,Ni+1)
-    y = np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
-    a = np.ones(Ni+1)
+    x = linspace(-15,25,Ni+1)
+    y = sin(linspace(-np.pi/2, np.pi/2, Nj+1))
+    a = ones(Ni+1)
     a[np.abs(x) < 10] = 1 - (1 + cos(x[np.abs(x) < 10] / 10 * np.pi)) * 0.2
     
     y, x = np.meshgrid(y, x)
@@ -238,17 +238,17 @@ if geometry == 'nozzle':
 elif geometry == 'bend':
     Ni, Nj = 100, 20
     # Ni, Nj = 200, 40
-    theta = np.linspace(0, pi, Ni/2+1)
-    r = 15 + 5 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
-    r, theta = np.meshgrid(r, theta)
+    theta = linspace(0, pi, Ni/2+1)
+    r = 15 + 5 * sin(linspace(-np.pi/2, np.pi/2, Nj+1))
+    r, theta = meshgrid(r, theta)
     x, y = r * sin(theta), r * cos(theta)
 
     dx = 15 * 2 * pi / Ni
     y0, y1 = y[0,:], y[-1,:]
-    y0, x0 = np.meshgrid(y0, dx * np.arange(-Ni/4, 0))
-    y1, x1 = np.meshgrid(y1, -dx * np.arange(1, 1 + Ni/4))
+    y0, x0 = meshgrid(y0, dx * arange(-Ni/4, 0))
+    y1, x1 = meshgrid(y1, -dx * arange(1, 1 + Ni/4))
     
-    x, y = np.vstack([x0, x, x1]), np.vstack([y0, y, y1])
+    x, y = vstack([x0, x, x1]), vstack([y0, y, y1])
 
 np.save('geo.npy', base(array([x, y])))
 geo = geo2d([x, y])
@@ -291,4 +291,7 @@ w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
 figure(figsize=(30,10))
 vis(w, geo)
 savefig('navierstokes-{0}.png'.format(geometry))
+
+open('graph.dot', 'wt').write(dot(w))
+
 show(block=True)

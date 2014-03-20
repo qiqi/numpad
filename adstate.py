@@ -140,6 +140,5 @@ def _add_ops(op0, op1):
     else:
         return op0 + op1
 
-
 if __name__ == '__main__':
     unittest.main()
