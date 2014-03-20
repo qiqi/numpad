@@ -38,7 +38,7 @@ class interp:
         'which interval to look at?'
         i = np.searchsorted(base(self.x0), base(x))
         np.maximum(i, 0, i)
-        np.minimum(i, self.x0.size, i)
+        np.minimum(i, self.x0.size - 1, i)
         x0, x1 = self.x0[i - 1], self.x0[i]
         y0, y1 = self.y0[i - 1], self.y0[i]
         return x0, x1, y0, y1

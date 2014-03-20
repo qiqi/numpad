@@ -1,6 +1,11 @@
+import os
+import sys
 import unittest
-from adarray import *
-from adsolve import *
+
+sys.path.append(os.path.realpath('..')) # for running unittest
+
+from numpad.adarray import *
+from numpad.adsolve import *
 
 def _clear_dot_name(state):
     if hasattr(state, '_dot_name'):

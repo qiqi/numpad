@@ -573,11 +573,11 @@ class adarray:
             if a_multiplier.ndim:
                 a_multiplier[:] = base(b)
             else:
-                a_multiplier = base(b)
+                a_multiplier = base(b).copy()
             if b_multiplier.ndim:
-                b_multiplier[:] = base(a)
+                b_multiplier[:] = base(a).copy()
             else:
-                b_multiplier = base(a)
+                b_multiplier = base(a).copy()
 
             i = np.arange(a_x_b.size)
 
@@ -609,12 +609,13 @@ class adarray:
                 self._DEBUG_perturb *= a
                 _DEBUG_perturb_verify(self)
         else:
-            self._base *= a._base
-            multiplier = sp.dia_matrix((np.ravel(a._base), 0), (a.size,a.size))
+            multiplier = sp.dia_matrix((np.ravel(a._base.copy()), 0),
+                                        (a.size,a.size))
             self.next_state(multiplier, op_name='*')
-            multiplier = sp.dia_matrix((np.ravel(self._base), 0),
+            multiplier = sp.dia_matrix((np.ravel(self._base.copy()), 0),
                                        (self.size, self.size))
             self.next_state(multiplier, a, '*')
+            self._base *= a._base
             if __DEBUG_MODE__:
                 self._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
                                     + base(self) * _DEBUG_perturb_retrieve(a)
