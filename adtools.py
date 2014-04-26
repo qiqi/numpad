@@ -37,7 +37,7 @@ class interp:
     def find(self, x):
         'which interval to look at?'
         i = np.searchsorted(base(self.x0), base(x))
-        np.maximum(i, 0, i)
+        np.maximum(i, 1, i)
         np.minimum(i, self.x0.size - 1, i)
         x0, x1 = self.x0[i - 1], self.x0[i]
         y0, y1 = self.y0[i - 1], self.y0[i]
@@ -79,6 +79,16 @@ class SanityCheck(unittest.TestCase):
             y = interp(x0, y0, interp_type)
             x = x0.copy()
             self.assertAlmostEqual(abs(base(y(x) - y0)).max(), 0)
+
+    def testLinear(self):
+        N = 11
+        x0 = arange(N)
+        y0 = arange(N)
+        y0[-1] = 0
+        for interp_type in ('linear',):
+            y = interp(x0, y0, interp_type)
+            x = linspace(-1, N-2, 10000)
+            self.assertAlmostEqual(abs(base(y(x) - x)).max(), 0)
 
     def testMatchDeriv(self):
         N = 11
