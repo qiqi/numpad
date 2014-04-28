@@ -383,6 +383,9 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=False):
     sum_a = sum(a, axis, dtype, out, keepdims)
     return sum_a * (float(sum_a.size) / a.size)
 
+def dot(a, b):
+    return (a * b).sum()
+
 # ===================== the adarray class ====================== #
 
 class adarray:
