@@ -168,6 +168,7 @@ def maximum_smooth(a, b, c=0.1):
 def minimum_smooth(a, b, c=0.1):
     return -maximum_smooth(-a, -b, c)
 
+@append_docstring_from_numpy
 def exp(x, out=None):
     x = array(x)
 
@@ -186,9 +187,11 @@ def exp(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def sqrt(x):
     return x**(0.5)
 
+@append_docstring_from_numpy
 def sin(x, out=None):
     x = array(x)
 
@@ -206,6 +209,7 @@ def sin(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def cos(x, out=None):
     x = array(x)
 
@@ -223,6 +227,7 @@ def cos(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def log(x, out=None):
     x = array(x)
 
@@ -240,6 +245,7 @@ def log(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def tanh(x, out=None):
     x = array(x)
 
@@ -261,6 +267,7 @@ def tanh(x, out=None):
 
 # ------------------ copy, stack, transpose operations ------------------- #
 
+@append_docstring_from_numpy
 def array(a):
     if isinstance(a, adarray):
         return a
@@ -292,10 +299,12 @@ def array(a):
 
         return adarray_a
         
+@append_docstring_from_numpy
 def ravel(a):
     a = array(a)
     return a.reshape((a.size,))
 
+@append_docstring_from_numpy
 def copy(a):
     a_copy = adarray(np.copy(base(a)))
     if isinstance(a, adarray):
@@ -307,6 +316,7 @@ def copy(a):
         assert isinstance(a, np.ndarray)
     return a_copy
 
+@append_docstring_from_numpy
 def transpose(a, axes=None):
     a = array(a)
     a_transpose = adarray(np.transpose(a._base, axes))
@@ -320,6 +330,7 @@ def transpose(a, axes=None):
         _DEBUG_perturb_verify(a_transpose)
     return a_transpose
 
+@append_docstring_from_numpy
 def concatenate(adarrays, axis=0):
     adarrays = [array(a) for a in adarrays]
     ndarrays, marker_arrays = [], []
@@ -349,18 +360,22 @@ def concatenate(adarrays, axis=0):
         _DEBUG_perturb_verify(concatenated_array)
     return concatenated_array
 
+@append_docstring_from_numpy
 def hstack(adarrays):
     max_ndim = max(array(a).ndim for a in adarrays)
     axis = 1 if max_ndim > 1 else 0
     return concatenate(adarrays, axis=axis)
 
+@append_docstring_from_numpy
 def vstack(adarrays):
     return concatenate(adarrays, axis=0)
 
+@append_docstring_from_numpy
 def meshgrid(x, y):
     ind_xx, ind_yy = np.meshgrid(x._ind, y._ind)
     return x[ind_xx], y[ind_yy]
 
+@append_docstring_from_numpy
 def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     assert dtype is None and out is None
     a = array(a)
@@ -379,12 +394,22 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
         _DEBUG_perturb_verify(sum_a)
     return sum_a
 
+@append_docstring_from_numpy
 def mean(a, axis=None, dtype=None, out=None, keepdims=False):
     sum_a = sum(a, axis, dtype, out, keepdims)
     return sum_a * (float(sum_a.size) / a.size)
 
+@append_docstring_from_numpy
 def dot(a, b):
-    return (a * b).sum()
+    dot_axis = a.ndim - 1  # axis to sum over
+    if b.ndim > 1:
+        # extend the dimension of a
+        a = a.reshape(a.shape + ((1,) * (b.ndim - 1)))
+        # roll axes of b so that the second last index is the first
+        b = rollaxis(b, -2)
+    # extend the dimension of b
+    b = b.reshape(((1,) * (a.ndim - b.ndim)) + b.shape)
+    return sum(a * b, axis=dot_axis)
 
 # ===================== the adarray class ====================== #
 
@@ -752,6 +777,22 @@ class _ManipulationTest(unittest.TestCase):
         self.assertEqual(0, (e.diff(c, 'adjoint') - sp.vstack([O,O,I,O])).nnz)
         self.assertEqual(0, (e.diff(d, 'tangent') - sp.vstack([O,O,O,I])).nnz)
         self.assertEqual(0, (e.diff(d, 'adjoint') - sp.vstack([O,O,O,I])).nnz)
+
+    def testDot(self):
+        N = 20
+        a = random((10, N))
+        b = random((N, 30))
+        c = dot(a, b)
+
+        c_diff_b = c.diff(b)
+        discrepancy = c_diff_b - sp.kron(a._base, sp.eye(c.shape[1]))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        c_diff_a = c.diff(a)
+        discrepancy = c_diff_a - sp.kron(sp.eye(c.shape[0]), b.T._base)
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testTranspose(self):
         N = 10
