@@ -1131,6 +1131,5 @@ class _Burgers1dTest(unittest.TestCase):
         self.assertTrue(res.diff(u, 'adjoint').shape == (N-1,N-1))
 
 if __name__ == '__main__':
-    _OperationsTest().testExpLog()
     # _DEBUG_mode()
     unittest.main()
