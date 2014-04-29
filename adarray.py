@@ -168,6 +168,7 @@ def maximum_smooth(a, b, c=0.1):
 def minimum_smooth(a, b, c=0.1):
     return -maximum_smooth(-a, -b, c)
 
+@append_docstring_from_numpy
 def exp(x, out=None):
     x = array(x)
 
@@ -177,8 +178,7 @@ def exp(x, out=None):
         np.exp(x._base, out._base)
         out.next_state(0, op_name='0')
 
-    multiplier = sp.dia_matrix((np.exp(np.ravel(x._base)), 0),
-                               (x.size, x.size))
+    multiplier = dia_jac(np.exp(np.ravel(x._base)))
     out.next_state(multiplier, x, op_name='exp')
 
     if __DEBUG_MODE__:
@@ -186,9 +186,11 @@ def exp(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def sqrt(x):
     return x**(0.5)
 
+@append_docstring_from_numpy
 def sin(x, out=None):
     x = array(x)
 
@@ -197,8 +199,7 @@ def sin(x, out=None):
     else:
         np.sin(x._base, out._base)
         out.next_state(0, op_name='0')
-    multiplier = sp.dia_matrix((np.cos(np.ravel(x._base)), 0),
-                               (x.size, x.size))
+    multiplier = dia_jac(np.cos(np.ravel(x._base)))
     out.next_state(multiplier, x, op_name='sin')
 
     if __DEBUG_MODE__:
@@ -206,6 +207,7 @@ def sin(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def cos(x, out=None):
     x = array(x)
 
@@ -214,8 +216,7 @@ def cos(x, out=None):
     else:
         np.cos(x._base, out._base)
         out.next_state(0, op_name='0')
-    multiplier = sp.dia_matrix((-np.sin(np.ravel(x._base)), 0),
-                               (x.size, x.size))
+    multiplier = dia_jac(-np.sin(np.ravel(x._base)))
     out.next_state(multiplier, x, 'cos')
 
     if __DEBUG_MODE__:
@@ -223,6 +224,7 @@ def cos(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def log(x, out=None):
     x = array(x)
 
@@ -231,8 +233,7 @@ def log(x, out=None):
     else:
         np.log(x._base, out._base)
         out.next_state(0, op_name='0')
-    multiplier = sp.dia_matrix((1. / np.ravel(x._base), 0),
-                               (x.size, x.size))
+    multiplier = dia_jac(1. / np.ravel(x._base))
     out.next_state(multiplier, x, 'log')
 
     if __DEBUG_MODE__:
@@ -240,6 +241,7 @@ def log(x, out=None):
         _DEBUG_perturb_verify(out)
     return out
 
+@append_docstring_from_numpy
 def tanh(x, out=None):
     x = array(x)
 
@@ -249,8 +251,7 @@ def tanh(x, out=None):
         np.tanh(x._base, out._base)
         out.next_state(0, op_name='0')
 
-    multiplier = sp.dia_matrix((1 - np.tanh(np.ravel(x._base))**2, 0),
-                               (x.size, x.size))
+    multiplier = dia_jac(1 - np.tanh(np.ravel(x._base))**2)
     out.next_state(multiplier, x, 'tanh')
 
     if __DEBUG_MODE__:
@@ -261,6 +262,7 @@ def tanh(x, out=None):
 
 # ------------------ copy, stack, transpose operations ------------------- #
 
+@append_docstring_from_numpy
 def array(a):
     if isinstance(a, adarray):
         return a
@@ -280,7 +282,7 @@ def array(a):
             j_data = np.arange(a[i].size)
             i_data = i * a[i].size + j_data
             shape = (adarray_a.size, a[i].size)
-            multiplier = sp.csr_matrix((data, (i_data, j_data)), shape=shape)
+            multiplier = csr_jac(data, i_data, j_data, shape=shape)
             adarray_a.next_state(multiplier, a[i], 'array')
 
         if __DEBUG_MODE__:
@@ -292,10 +294,12 @@ def array(a):
 
         return adarray_a
         
+@append_docstring_from_numpy
 def ravel(a):
     a = array(a)
     return a.reshape((a.size,))
 
+@append_docstring_from_numpy
 def copy(a):
     a_copy = adarray(np.copy(base(a)))
     if isinstance(a, adarray):
@@ -307,19 +311,21 @@ def copy(a):
         assert isinstance(a, np.ndarray)
     return a_copy
 
+@append_docstring_from_numpy
 def transpose(a, axes=None):
     a = array(a)
     a_transpose = adarray(np.transpose(a._base, axes))
     i = np.arange(a.size).reshape(a.shape)
     j = np.transpose(i, axes)
     data = np.ones(i.size)
-    multiplier = sp.csr_matrix((data, (np.ravel(i), np.ravel(j))))
+    multiplier = csr_jac(data, np.ravel(i), np.ravel(j))
     a_transpose.next_state(multiplier, a, 'T')
     if __DEBUG_MODE__:
         a_transpose._DEBUG_perturb = _DEBUG_perturb_retrieve(a).T
         _DEBUG_perturb_verify(a_transpose)
     return a_transpose
 
+@append_docstring_from_numpy
 def concatenate(adarrays, axis=0):
     adarrays = [array(a) for a in adarrays]
     ndarrays, marker_arrays = [], []
@@ -337,7 +343,7 @@ def concatenate(adarrays, axis=0):
         i = (marker == i_component).nonzero()[0]
         j = np.arange(i.size)
         data = np.ones(i.size, int)
-        multiplier = sp.csr_matrix((data, (i, j)), shape=(marker.size, i.size))
+        multiplier = csr_jac(data, i, j, shape=(marker.size, i.size))
         concatenated_array.next_state(multiplier, a, 'cat')
 
     if __DEBUG_MODE__:
@@ -349,18 +355,22 @@ def concatenate(adarrays, axis=0):
         _DEBUG_perturb_verify(concatenated_array)
     return concatenated_array
 
+@append_docstring_from_numpy
 def hstack(adarrays):
     max_ndim = max(array(a).ndim for a in adarrays)
     axis = 1 if max_ndim > 1 else 0
     return concatenate(adarrays, axis=axis)
 
+@append_docstring_from_numpy
 def vstack(adarrays):
     return concatenate(adarrays, axis=0)
 
+@append_docstring_from_numpy
 def meshgrid(x, y):
     ind_xx, ind_yy = np.meshgrid(x._ind, y._ind)
     return x[ind_xx], y[ind_yy]
 
+@append_docstring_from_numpy
 def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     assert dtype is None and out is None
     a = array(a)
@@ -371,7 +381,7 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     i = np.ravel(j + np.zeros_like(a._base, int))
     j = np.ravel(a._ind)
     data = np.ones(i.size, int)
-    multiplier = sp.csr_matrix((data, (i, j)), shape=(sum_a.size, a.size))
+    multiplier = csr_jac(data, i, j, shape=(sum_a.size, a.size))
     sum_a.next_state(multiplier, a, 'sum')
 
     if __DEBUG_MODE__:
@@ -379,9 +389,22 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
         _DEBUG_perturb_verify(sum_a)
     return sum_a
 
+@append_docstring_from_numpy
 def mean(a, axis=None, dtype=None, out=None, keepdims=False):
     sum_a = sum(a, axis, dtype, out, keepdims)
     return sum_a * (float(sum_a.size) / a.size)
+
+@append_docstring_from_numpy
+def dot(a, b):
+    dot_axis = a.ndim - 1  # axis to sum over
+    if b.ndim > 1:
+        # extend the dimension of a
+        a = a.reshape(a.shape + ((1,) * (b.ndim - 1)))
+        # roll axes of b so that the second last index is the first
+        b = rollaxis(b, -2)
+    # extend the dimension of b
+    b = b.reshape(((1,) * (a.ndim - b.ndim)) + b.shape)
+    return sum(a * b, axis=dot_axis)
 
 # ===================== the adarray class ====================== #
 
@@ -447,7 +470,7 @@ class adarray:
     def reshape(self, shape):
         reshaped = adarray(self._base.reshape(shape))
         if self.size > 0:
-            reshaped.next_state(sp.eye(self.size,self.size), self, 'reshape')
+            reshaped.next_state(1, self, 'reshape')
         if __DEBUG_MODE__:
             reshaped._DEBUG_perturb = self._DEBUG_perturb.reshape(shape)
         return reshaped
@@ -461,8 +484,7 @@ class adarray:
 
         j = np.ravel(self._ind[ind])
         i = np.arange(j.size)
-        multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
-                                   shape=(j.size, self.size))
+        multiplier = csr_jac(np.ones(j.size), i,j, shape=(j.size, self.size))
         self.next_state(multiplier, op_name='sort')
 
         if __DEBUG_MODE__:
@@ -502,19 +524,26 @@ class adarray:
             b = self
             a_p_b = adarray(base(a) + base(b))
 
-            multiplier = np.ones(a_p_b.shape)
-            i = np.arange(a_p_b.size)
+            if a.shape == b.shape:
+                if hasattr(a, '_base'):
+                    a_p_b.next_state(1, a, '+')
+                if hasattr(b, '_base'):
+                    a_p_b.next_state(1, b, '+')
+            else:
+                # a, b, or both is "broadcasted" to fit the shape of each other
+                multiplier = np.ones(a_p_b.shape)
+                i = np.arange(a_p_b.size)
 
-            if hasattr(a, '_base') and multiplier.size > 0:
-                j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
-                a_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_a)),
-                                             shape=(a_p_b.size, a.size))
-                a_p_b.next_state(a_multiplier, a, '+')
-            if hasattr(b, '_base') and multiplier.size > 0:
-                j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
-                b_multiplier = sp.csr_matrix((np.ravel(multiplier), (i, j_b)),
-                                             shape=(a_p_b.size, b.size))
-                a_p_b.next_state(b_multiplier, b, '+')
+                if hasattr(a, '_base') and multiplier.size > 0:
+                    j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
+                    a_multiplier = csr_jac(np.ravel(multiplier), i, j_a,
+                                           shape=(a_p_b.size, a.size))
+                    a_p_b.next_state(a_multiplier, a, '+')
+                if hasattr(b, '_base') and multiplier.size > 0:
+                    j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
+                    b_multiplier = csr_jac(np.ravel(multiplier), i, j_b,
+                                           shape=(a_p_b.size, b.size))
+                    a_p_b.next_state(b_multiplier, b, '+')
 
         if __DEBUG_MODE__:
             a_p_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) \
@@ -530,7 +559,11 @@ class adarray:
             self._base += a
         else:
             self._base += a._base
-            self.next_state(1, a, '+')
+            if a.shape == self.shape:
+                self.next_state(1, a, '+')
+            else:
+                # a is broadcasted to fit self's shape
+                raise NotImplementedError
 
         if __DEBUG_MODE__:
             self._DEBUG_perturb += _DEBUG_perturb_retrieve(a)
@@ -568,29 +601,35 @@ class adarray:
             b = self
             a_x_b = adarray(base(a) * base(b))
 
-            a_multiplier = np.zeros(a_x_b.shape)
-            b_multiplier = np.zeros(a_x_b.shape)
-            if a_multiplier.ndim:
-                a_multiplier[:] = base(b)
+            if a.shape == b.shape:
+                if hasattr(a, '_base'):
+                    a_x_b.next_state(dia_jac(base(b)), a, '*')
+                if hasattr(b, '_base'):
+                    a_x_b.next_state(dia_jac(base(a)), b, '*')
             else:
-                a_multiplier = base(b).copy()
-            if b_multiplier.ndim:
-                b_multiplier[:] = base(a).copy()
-            else:
-                b_multiplier = base(a).copy()
+                a_multiplier = np.zeros(a_x_b.shape)
+                b_multiplier = np.zeros(a_x_b.shape)
+                if a_multiplier.ndim:
+                    a_multiplier[:] = base(b)
+                else:
+                    a_multiplier = base(b).copy()
+                if b_multiplier.ndim:
+                    b_multiplier[:] = base(a).copy()
+                else:
+                    b_multiplier = base(a).copy()
 
-            i = np.arange(a_x_b.size)
+                i = np.arange(a_x_b.size)
 
-            if hasattr(a, '_base') and a_x_b.size > 0:
-                j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
-                a_multiplier = sp.csr_matrix((np.ravel(a_multiplier), (i, j_a)),
-                                             shape=(a_x_b.size, a.size))
-                a_x_b.next_state(a_multiplier, a, '*')
-            if hasattr(b, '_base') and a_x_b.size > 0:
-                j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
-                b_multiplier = sp.csr_matrix((np.ravel(b_multiplier), (i, j_b)),
-                                             shape=(a_x_b.size, b.size))
-                a_x_b.next_state(b_multiplier, b, '*')
+                if hasattr(a, '_base') and a_x_b.size > 0:
+                    j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
+                    a_multiplier = csr_jac(np.ravel(a_multiplier), i, j_a,
+                                           shape=(a_x_b.size, a.size))
+                    a_x_b.next_state(a_multiplier, a, '*')
+                if hasattr(b, '_base') and a_x_b.size > 0:
+                    j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
+                    b_multiplier = csr_jac(np.ravel(b_multiplier), i, j_b,
+                                           shape=(a_x_b.size, b.size))
+                    a_x_b.next_state(b_multiplier, b, '*')
 
             if __DEBUG_MODE__:
                 a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
@@ -609,11 +648,9 @@ class adarray:
                 self._DEBUG_perturb *= a
                 _DEBUG_perturb_verify(self)
         else:
-            multiplier = sp.dia_matrix((np.ravel(a._base.copy()), 0),
-                                        (a.size,a.size))
+            multiplier = dia_jac(np.ravel(a._base.copy()))
             self.next_state(multiplier, op_name='*')
-            multiplier = sp.dia_matrix((np.ravel(self._base.copy()), 0),
-                                       (self.size, self.size))
+            multiplier = dia_jac(np.ravel(self._base.copy()))
             self.next_state(multiplier, a, '*')
             self._base *= a._base
             if __DEBUG_MODE__:
@@ -641,7 +678,7 @@ class adarray:
         multiplier = a * np.ravel(self._base)**(a-1)
         if multiplier.size > 0:
             multiplier[~np.isfinite(multiplier)] = 0
-            multiplier = sp.dia_matrix((multiplier, 0), (self.size,self.size))
+            multiplier = dia_jac(multiplier)
             self_to_a.next_state(multiplier, self, '**')
         if __DEBUG_MODE__:
             self_to_a._DEBUG_perturb = a * self._base**(a-1) \
@@ -666,8 +703,8 @@ class adarray:
         j = np.ravel(self._ind[ind])
         if j.size > 0:
             i = np.arange(j.size)
-            multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
-                                       shape=(j.size, self.size))
+            multiplier = csr_jac(np.ones(j.size), i,j,
+                                 shape=(j.size, self.size))
             self_i.next_state(multiplier, self, '[]')
 
         if __DEBUG_MODE__:
@@ -678,7 +715,7 @@ class adarray:
     def __setitem__(self, ind, a):
         data = np.ones(self.size)
         data[self._ind[ind]] = 0
-        multiplier = sp.dia_matrix((data, 0), (data.size, data.size))
+        multiplier = dia_jac(data)
         self.next_state(multiplier, op_name='[]=0')
 
         self._base.__setitem__(ind, base(a))
@@ -688,8 +725,8 @@ class adarray:
             if i.size > 0:
                 j = a._ind_casted_to(i.shape)
                 i, j = np.ravel(i), np.ravel(j)
-                multiplier = sp.csr_matrix((np.ones(j.size), (i,j)),
-                                           shape=(self.size, a.size))
+                multiplier = csr_jac(np.ones(j.size), i,j,
+                                     shape=(self.size, a.size))
                 self.next_state(multiplier, a, op_name='[]')
 
         if __DEBUG_MODE__:
@@ -749,6 +786,22 @@ class _ManipulationTest(unittest.TestCase):
         self.assertEqual(0, (e.diff(c, 'adjoint') - sp.vstack([O,O,I,O])).nnz)
         self.assertEqual(0, (e.diff(d, 'tangent') - sp.vstack([O,O,O,I])).nnz)
         self.assertEqual(0, (e.diff(d, 'adjoint') - sp.vstack([O,O,O,I])).nnz)
+
+    def testDot(self):
+        N = 20
+        a = random((10, N))
+        b = random((N, 30))
+        c = dot(a, b)
+
+        c_diff_b = c.diff(b)
+        discrepancy = c_diff_b - sp.kron(a._base, sp.eye(c.shape[1]))
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        c_diff_a = c.diff(a)
+        discrepancy = c_diff_a - sp.kron(sp.eye(c.shape[0]), b.T._base)
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testTranspose(self):
         N = 10

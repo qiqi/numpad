@@ -124,13 +124,52 @@ class IntermediateState:
         self._f_diff_self = f_diff_self
         return f_diff_self
 
-# -------------- auxiliary functions for differentiation ------------ #
+# -------- Sparse Jacobian objects for delayed Jacobian construction ------- #
 
-def _multiply_ops(op0, op1):
-    if op0 is 0 or op1 is 0:
-        return 0
+class dia_jac:
+    def __init__(self, data):
+        self.data = data
+
+    @property
+    def shape(self):
+        return (self.data.size, self.data.size)
+
+    def tocsr(self):
+        if not hasattr(self, '_mat'):
+            n = self.data.size
+            indices = np.arange(n, dtype=int)
+            indptr = np.arange(n+1, dtype=int)
+            self._mat = sp.csr_matrix((self.data, indices, indptr))
+        return self._mat
+
+class csr_jac:
+    def __init__(self, data, i, j, shape=None):
+        self.data = data
+        self.i = i
+        self.j = j
+        self._shape = shape
+
+    @property
+    def shape(self):
+        if self._shape:
+            return self._shape
+        else:
+            return (self.i.max() + 1, self.j.max() + 1)
+
+    def tocsr(self):
+        if not hasattr(self, '_mat'):
+            self._mat = sp.csr_matrix((self.data, (self.i, self.j)),
+                                      shape=self._shape)
+            self._shape = self._mat.shape
+        return self._mat
+
+def tocsr(jac):
+    if isinstance(jac, (dia_jac, csr_jac)):
+        return jac.tocsr()
     else:
-        return op0 * op1
+        return jac
+
+# ------------- addition and multiplication of sparse Jacobians ------------ #
 
 def _add_ops(op0, op1):
     if op0 is 0:
@@ -138,7 +177,13 @@ def _add_ops(op0, op1):
     elif op1 is 0:
         return op0
     else:
-        return op0 + op1
+        return tocsr(op0) + tocsr(op1)
+
+def _multiply_ops(op0, op1):
+    if op0 is 0 or op1 is 0:
+        return 0
+    else:
+        return tocsr(op0) * tocsr(op1)
 
 if __name__ == '__main__':
     unittest.main()
