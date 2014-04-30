@@ -1,3 +1,4 @@
+import pdb
 import os
 import sys
 import time
@@ -45,86 +46,109 @@ class IntermediateState:
             else:                    # binary operation
                 if not isinstance(multiplier, numbers.Number):  # not 1 or 0
                     assert multiplier.shape == (self.size, other_state.size)
-                other_state.to_list.append(weakref.ref(self))
+                other_state._to_refs.append(weakref.ref(self))
                 assert isinstance(other_state, IntermediateState)
                 self.other = other_state
 
-        self.to_list = []
+        self._to_refs = []
+
+    def __hash__(self):
+        return self._state_id
+
+    def __lt__(self, other):
+        return self._state_id < other._state_id
+
+    def __eq__(self, other):
+        return self._state_id == other._state_id
+
+    def tos(self):
+        if hasattr(self, 'next') and self.next():
+            yield self.next()
+        for ref in self._to_refs:
+            if ref():
+                yield ref()
+
+    def froms(self):
+        if self.prev:
+            yield self.prev
+        if self.other:
+            yield self.other
 
     def next_state(self, multiplier, other_state=None, op_name=''):
         return IntermediateState(self.host(), self, multiplier, other_state,
                                  op_name)
 
-    # --------- recursive functions for tangent differentiation -------- #
+    # --------- functions for tangent and adjoint differentiation -------- #
 
-    def clear_self_diff_u(self):
-        if hasattr(self, '_self_diff_u'):
-            del self._self_diff_u
-            if self.other:
-                self.other.clear_self_diff_u()
-            if self.prev:
-                self.prev.clear_self_diff_u()
-    
-    def diff_recurse(self, u):
-        if hasattr(self, '_self_diff_u'):
-            return self._self_diff_u
-
-        if u is self:             # found u in the graph
-            self_diff_u = sp.eye(u.size, u.size)
-        elif self.prev is None:   # initial state, dead end
-            self_diff_u = 0
+    def diff_tangent(self, dependees_diff_u):
+        if self.prev is None:     # initial state, has 0 derivative to anything
+            return 0
         elif self.other is None:  # unitary operation
-            self_diff_u = _multiply_ops(self.multiplier,
-                                        self.prev.diff_recurse(u))
+            prev_diff_u, = dependees_diff_u
+            return _multiply_ops(self.multiplier, prev_diff_u)
         else:                     # binary operation
-            self_diff_u_0 = self.prev.diff_recurse(u)
-            self_diff_u_1 = _multiply_ops(self.multiplier,
-                                          self.other.diff_recurse(u))
-            self_diff_u = _add_ops(self_diff_u_0, self_diff_u_1)
-    
-        self._self_diff_u = self_diff_u
-        return self_diff_u
+            prev_diff_u, other_diff_u = dependees_diff_u
+            return _add_ops(prev_diff_u, _multiply_ops(self.multiplier,
+                                                       other_diff_u))
 
-    # --------- recursive functions for adjoint differentiation -------- #
+    def diff_adjoint(self, f_diff_dependers):
+        f_diff_self = 0
+        for state, f_diff_state in zip(self.tos(), f_diff_dependers):
+            if state.other is self:                   # binary operation
+                state_diff_self = state.multiplier
+            elif state.prev is self and state.other:  # binary operation
+                state_diff_self = 1
+            else:                                     # unitary operation
+                assert state.prev is self
+                state_diff_self = state.multiplier
 
-    def clear_f_diff_self(self):
-        if hasattr(self, '_f_diff_self'):
-            del self._f_diff_self
-            if hasattr(self, 'next') and self.next():
-                self.next().clear_f_diff_self()
-            for to_item in self.to_list:
-                if to_item():
-                    to_item().clear_f_diff_self()
-    
-    def adjoint_recurse(self, f):
-        if hasattr(self, '_f_diff_self'):
-            return self._f_diff_self
-
-        if f is self:             # found f in the graph
-            f_diff_self = sp.eye(f.size, f.size)
-        else:
-            f_diff_self = 0
-            if hasattr(self, 'next') and self.next():
-                if self.next().other:  # binary operation
-                    next_diff_self = 1
-                else:                  # unitary operation
-                    next_diff_self = self.next().multiplier
-
-                f_diff_next = self.next().adjoint_recurse(f)
-                f_diff_self = _multiply_ops(f_diff_next, next_diff_self)
-
-            for to_item in self.to_list:
-                if to_item():
-                    assert to_item().other is self
-                    f_diff_item = to_item().adjoint_recurse(f)
-                    item_diff_self = to_item().multiplier
-                    f_diff_self_i = _multiply_ops(f_diff_item, item_diff_self)
-                    f_diff_self = _add_ops(f_diff_self, f_diff_self_i)
-
-        self._f_diff_self = f_diff_self
+            f_diff_self = _add_ops(f_diff_self,
+                    _multiply_ops(f_diff_state, state_diff_self))
         return f_diff_self
 
-# -------- Sparse Jacobian objects for delayed Jacobian construction ------- #
+# -------- tangent and adjoint differentiation through state graph ------- #
+
+def diff_tangent(f, u):
+    # backward sweep, populate diff_u with active states being keys
+    diff_u = {}
+    to_visit = [f]
+    while to_visit:
+        state = to_visit.pop(0)
+        if state not in diff_u:
+            diff_u[state] = 0
+            to_visit.extend(s for s in state.froms())
+
+    # forward sweep
+    for state in sorted(diff_u):  # iterate from earliest state
+        if state is u:            # found u in the graph
+            diff_u[state] = sp.eye(u.size, u.size)
+        else:                     # compute derivative from its dependees
+            dependees_diff_u = (diff_u[s] for s in state.froms())
+            diff_u[state] = state.diff_tangent(dependees_diff_u)
+
+    return diff_u[f]
+
+def diff_adjoint(f, u):
+    # forward sweep, populate f_diff with active states being keys
+    f_diff = {}
+    to_visit = [u]
+    while to_visit:
+        state = to_visit.pop(0)
+        if state not in f_diff:
+            f_diff[state] = 0
+            to_visit.extend(s for s in state.tos())
+
+    # backward sweep
+    for state in sorted(f_diff, reverse=True):  # iterate from latest state
+        if state is f:            # found f in the graph
+            f_diff[state] = sp.eye(f.size, f.size)
+        else:                     # compute derivative from its dependees
+            f_diff_dependers = (f_diff[s] for s in state.tos())
+            f_diff[state] = state.diff_adjoint(f_diff_dependers)
+
+    return f_diff[u]
+
+# -------- Jacobian class construct sparse matrix only when needed ------- #
 
 class dia_jac:
     def __init__(self, data):
@@ -151,16 +175,14 @@ class csr_jac:
 
     @property
     def shape(self):
-        if self._shape:
-            return self._shape
-        else:
-            return (self.i.max() + 1, self.j.max() + 1)
+        if self._shape is None:
+            self._shape = (self.i.max() + 1, self.j.max() + 1)
+        return self._shape
 
     def tocsr(self):
         if not hasattr(self, '_mat'):
             self._mat = sp.csr_matrix((self.data, (self.i, self.j)),
-                                      shape=self._shape)
-            self._shape = self._mat.shape
+                                       shape=self._shape)
         return self._mat
 
 def tocsr(jac):
