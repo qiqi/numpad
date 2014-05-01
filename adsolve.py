@@ -17,36 +17,36 @@ class ResidualState(IntermediateState):
         host = prev_state.host()
         IntermediateState.__init__(self, host, prev_state, 1, None)
 
-    # --------- recursive functions for adjoint differentiation -------- #
-
-    def clear_f_diff_self(self):
-        IntermediateState.clear_f_diff_self(self)
+    def tos(self):
         if hasattr(self, 'solution') and self.solution():
-            self.solution().clear_f_diff_self()
-    
-    def adjoint_recurse(self, f):
-        if f is self or hasattr(self, '_f_diff_self') or \
-                self.solution() is None:
-            return IntermediateState.adjoint_recurse(self, f)
+            yield self.solution()
+        for state in IntermediateState.tos(self):
+            yield state
 
-        f_diff_soln = self.solution().adjoint_recurse(f)
-        if f_diff_soln is 0:
-            return IntermediateState.adjoint_recurse(self, f)
-        else:
-            if hasattr(f_diff_soln, 'todense'):
-                f_diff_soln = f_diff_soln.todense()
-            f_diff_soln = np.array(f_diff_soln)
-            # inverse of Jacobian matrix
-            self_diff_soln = self.solution().jacobian.T
-            soln_diff_self = splinalg.factorized(self_diff_soln.tocsc())
-            f_diff_self = np.array([-soln_diff_self(b) for b in f_diff_soln])
-            f_diff_self = np.matrix(f_diff_self.reshape(f_diff_soln.shape))
+    # --------- adjoint differentiation -------- #
 
-            f_diff_self_0 = IntermediateState.adjoint_recurse(self, f)
-            f_diff_self = _add_ops(f_diff_self, f_diff_self_0)
+    def diff_adjoint(self, f_diff_dependers):
+        f_diff_self = 0
+        iter_f_diff_dependers = iter(f_diff_dependers)
 
-            self.f_diff_self = f_diff_self
-            return f_diff_self
+        if hasattr(self, 'solution') and self.solution():
+            f_diff_soln = next(iter_f_diff_dependers)
+
+            if f_diff_soln is not 0:
+                if hasattr(f_diff_soln, 'todense'):
+                    f_diff_soln = f_diff_soln.todense()
+                f_diff_soln = np.array(f_diff_soln)
+
+                # inverse of Jacobian matrix
+                self_diff_soln = self.solution().jacobian.T
+                soln_diff_self = splinalg.factorized(self_diff_soln.tocsc())
+                f_diff_self = np.array([-soln_diff_self(b) \
+                                        for b in f_diff_soln])
+                f_diff_self = np.matrix(f_diff_self.reshape(f_diff_soln.shape))
+
+        f_diff_self_1 = IntermediateState.diff_adjoint(self,
+                                                       iter_f_diff_dependers)
+        return _add_ops(f_diff_self, f_diff_self_1)
 
 
 class SolutionState(IntermediateState):
@@ -64,33 +64,31 @@ class SolutionState(IntermediateState):
         self.residual = None
         self.jacobian = None
 
-    # --------- recursive functions for tangent differentiation -------- #
+    def froms(self):
+        if hasattr(self, 'residual') and self.residual:
+            yield self.residual
+        # it should have no other dependees
+        assert self.prev is None and self.other is None
 
-    def clear_self_diff_u(self):
-        IntermediateState.clear_self_diff_u(self)
-        if self.residual:
-            self.residual.clear_self_diff_u()
-    
-    def diff_recurse(self, u):
-        if u is self or hasattr(self, '_self_diff_u') or self.residual is None:
-            return IntermediateState.diff_recurse(self, u)
+    # --------- tangent differentiation -------- #
 
-        resid_diff_u = self.residual.diff_recurse(u)
-        if resid_diff_u is 0:
-            self_diff_u = 0
+    def diff_tangent(self, dependees_diff_u):
+        if hasattr(self, 'residual') and self.residual:
+            resid_diff_u, = dependees_diff_u
+            if resid_diff_u is 0:
+                return 0
+            else:
+                if hasattr(resid_diff_u, 'todense'):
+                    resid_diff_u = resid_diff_u.todense()
+                resid_diff_u = np.array(resid_diff_u)
+                # inverse of Jacobian matrix
+                resid_diff_self = self.jacobian
+                self_diff_resid = splinalg.factorized(resid_diff_self.tocsc())
+                self_diff_u = np.transpose([-self_diff_resid(b) \
+                                            for b in resid_diff_u.T])
+                return np.matrix(self_diff_u.reshape(resid_diff_u.shape))
         else:
-            if hasattr(resid_diff_u, 'todense'):
-                resid_diff_u = resid_diff_u.todense()
-            resid_diff_u = np.array(resid_diff_u)
-            # inverse of Jacobian matrix
-            resid_diff_self = self.jacobian
-            self_diff_resid = splinalg.factorized(resid_diff_self.tocsc())
-            self_diff_u = np.transpose([-self_diff_resid(b) \
-                                        for b in resid_diff_u.T])
-            self_diff_u = np.matrix(self_diff_u.reshape(resid_diff_u.shape))
-
-        self.self_diff_u = self_diff_u
-        return self_diff_u
+            return 0
 
 
 class adsolution(adarray):
