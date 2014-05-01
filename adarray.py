@@ -603,9 +603,9 @@ class adarray:
 
             if a.shape == b.shape:
                 if hasattr(a, '_base'):
-                    a_x_b.next_state(dia_jac(base(b)), a, '*')
+                    a_x_b.next_state(dia_jac(base(b).ravel()), a, '*')
                 if hasattr(b, '_base'):
-                    a_x_b.next_state(dia_jac(base(a)), b, '*')
+                    a_x_b.next_state(dia_jac(base(a).ravel()), b, '*')
             else:
                 a_multiplier = np.zeros(a_x_b.shape)
                 b_multiplier = np.zeros(a_x_b.shape)
