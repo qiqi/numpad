@@ -202,7 +202,7 @@ elif geometry == 'bend':
     theta = np.linspace(0, pi/2, Ni/3+1)
     r = 15 + 8 * np.sin(np.linspace(-np.pi/2, np.pi/2, Nj+1))
     r, theta = np.meshgrid(r, theta)
-    x, y = r * sin(theta), r * cos(theta)
+    x, y = r * np.sin(theta), r * np.cos(theta)
 
     dx = 24 / Nj
     y0 = y[0,:]
