@@ -17,10 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import pdb
 import os
 import sys
-import time
 import unittest
 import numbers
 import weakref
@@ -34,9 +32,25 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 g_state_count = 0
 
 def InitialState(host):
+    '''
+    Returns an IntermediateState object with no dependees
+    '''
     return IntermediateState(host, None, None, None)
 
 class IntermediateState:
+    '''
+    A state that evolves from a previous state (prev_state)
+    When a unitary operation creates this new IntermediateState,
+        multiplier is the Jacobian of the new state with respect to
+        the previous state.  other_state must be None.
+    When a binary operation creates this new IntermedateState,
+        multiplier is the Jacobian of the new state with respect to
+        the other contributing state (other_state).  The Jacobian with
+        respect to prev_state is identity.
+    The string op_name is used only in visualization
+
+    IntermediateStates can be hashed and compared. A newer state is "larger".
+    '''
     def __init__(self, host, prev_state, multiplier, other_state,
                  op_name=''):
         global g_state_count
@@ -53,7 +67,7 @@ class IntermediateState:
             assert isinstance(prev_state, IntermediateState)
             prev_state.next = weakref.ref(self)
 
-        if multiplier is None:       # initial state
+        if multiplier is None:       # initial state depends on nothing
             assert prev_state is None and other_state is None
             self.other = None
         else:
@@ -81,6 +95,9 @@ class IntermediateState:
         return self._state_id == other._state_id
 
     def tos(self):
+        '''
+        Generate all states that immediately depends on this state
+        '''
         if hasattr(self, 'next') and self.next():
             yield self.next()
         for ref in self._to_refs:
@@ -88,18 +105,31 @@ class IntermediateState:
                 yield ref()
 
     def froms(self):
+        '''
+        Generate all states that this state immediately depends on
+        '''
         if self.prev:
             yield self.prev
         if self.other:
             yield self.other
 
     def next_state(self, multiplier, other_state=None, op_name=''):
+        '''
+        Generate a state that evolves from this state,
+        either through a unitary operation (other_state is None)
+                    or a binary operation.
+        '''
         return IntermediateState(self.host(), self, multiplier, other_state,
                                  op_name)
 
     # --------- functions for tangent and adjoint differentiation -------- #
 
     def diff_tangent(self, dependees_diff_u):
+        '''
+        Given dependees_diff_u, the derivative of immediate dependees (froms())
+        with respect to u, this function should return the derivative of
+        this state with respect to the same u
+        '''
         if self.prev is None:     # initial state, has 0 derivative to anything
             return 0
         elif self.other is None:  # unitary operation
@@ -111,7 +141,13 @@ class IntermediateState:
                                                        other_diff_u))
 
     def diff_adjoint(self, f_diff_dependers):
+        '''
+        Given dependers_diff_u, the derivative of f with respect to
+        immediate dependers (tos()), this function should return the
+        derivative of the same f with respect to this state.
+        '''
         f_diff_self = 0
+        # go over immediate dependers and the derivative of f w.r.t. them
         for state, f_diff_state in zip(self.tos(), f_diff_dependers):
             if state.other is self:                   # binary operation
                 state_diff_self = state.multiplier
@@ -128,7 +164,12 @@ class IntermediateState:
 # -------- tangent and adjoint differentiation through state graph ------- #
 
 def diff_tangent(f, u):
-    # backward sweep, populate diff_u with active states being keys
+    '''
+    Computes derivative of f with respect to u, by accumulating Jacobian
+    forward, i.e., starting from u
+    '''
+    # backward sweep, populate diff_u with keys that contain all states
+    # that f (directly or indirectly) depends on
     diff_u = {}
     to_visit = [f]
     while to_visit:
@@ -148,7 +189,12 @@ def diff_tangent(f, u):
     return diff_u[f]
 
 def diff_adjoint(f, u):
-    # forward sweep, populate f_diff with active states being keys
+    '''
+    Computes derivative of f with respect to u, by accumulating Jacobian
+    backwards, i.e., starting from f
+    '''
+    # forward sweep, populate f_diff with keys that contain all state
+    # that (directly or indirectly) depends on u
     f_diff = {}
     to_visit = [u]
     while to_visit:
@@ -170,8 +216,11 @@ def diff_adjoint(f, u):
 # -------- Jacobian class construct sparse matrix only when needed ------- #
 
 class dia_jac:
-    def __init__(self, data):
-        self.data = data
+    '''
+    A Jacobian represented by a diagonal matrix.
+    '''
+    def __init__(self, diag_entries):
+        self.data = diag_entries
 
     @property
     def shape(self):
@@ -186,6 +235,9 @@ class dia_jac:
         return self._mat
 
 class csr_jac:
+    '''
+    Jacobian represented by a scipy.sparse.csr_matrix((data, (i, j))
+    '''
     def __init__(self, data, i, j, shape=None):
         self.data = data
         self.i = i
