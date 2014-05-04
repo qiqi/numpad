@@ -19,9 +19,11 @@
 
 import os
 import sys
+import pdb
 import unittest
 import numbers
 import weakref
+import pickle
 import numpy as np
 import scipy.sparse as sp
 
@@ -45,53 +47,63 @@ class MpiSendState(IntermediateState):
         self.cls_send_states[self._state_id] = self 
 
     def after_diff_tangent(self, self_diff_u):
-        HERE
+        buf = np.fromstring(pickle.dumps(self_diff_u), 'c')
+        _MPI_COMM.Send((buf, MPI.BYTE), self.dest, self.tag)
 
     # centralized management of all MpISendState objects
     cls_send_states = {}  # strong refs
 
-    cls_state = ['waiting': False]
+    cls_state = {'count_activated': 0}
 
     @staticmethod
-    def is_waiting():
-        return cls_state['waiting']
+    def count_activated():
+        return MpiSendState.cls_state['count_activated']
 
     @staticmethod
     def start_waiting():
-        assert cls_state['waiting'] == False
-        cls_state['waiting'] = True
+        MpiSendState.cls_state['count_activated'] = 0
 
     @staticmethod
     def newly_activated():
-        assert cls_state['waiting'] == True
         status = MPI.Status()
         while _MPI_COMM.Iprobe(MPI.ANY_SOURCE, MPI.ANY_TAG, status):
-            is status.count == 0:
-                cls_state['waiting'] = False
-                break
-            else:
-                assert status.count == np.dtype(int).itemsize
-                state_id = empty((), int)
-                _MPI_COMM.Recv(state_id, status.source, status.tag)
-                state_id = int(state_id)
+            assert status.count == np.dtype(int).itemsize
+            state_id = np.empty((), int)
+            _MPI_COMM.Recv(state_id, status.source, status.tag)
+            state_id = int(state_id)
 
-                assert state_id in self.cls_send_states
-                yield self.cls_send_states[state_id]
+            assert state_id in MpiSendState.cls_send_states
+            yield MpiSendState.cls_send_states[state_id]
+            MpiSendState.cls_state['count_activated'] += 1
 
 
 class MpiRecvState(IntermediateState):
     '''
     '''
-    def __init__(self, source, tag, send_state_id):
+    def __init__(self, prev_state, source, tag, send_state_id):
+        host = prev_state.host()
         IntermediateState.__init__(self, host, prev_state, 0, None)
 
-        self.dest = source
+        self.source = source
         self.tag = tag
         self.send_state_id = send_state_id
 
         self.cls_recv_states[(source, send_state_id)] = weakref.ref(self)
 
-    def active_remote(self):
+    def after_diff_tangent(self, self_diff_u):
+        status = MPI.Status()
+        _MPI_COMM.Probe(self.source, self.tag, status)
+        buf = np.empty(status.count, 'c')
+        _MPI_COMM.Recv((buf, MPI.BYTE), self.source, self.tag)
+        self_diff_u_remote = pickle.loads(buf.tostring())
+
+        for rank, diff_remote in self_diff_u_remote.items():
+            if rank in self_diff_u:
+                self_diff_u[rank] = _add_ops(self_diff_u[rank], diff_remote)
+            else:
+                self_diff_u[rank] = diff_remote
+
+    def activate_remote(self):
         send_state_id = np.array(self.send_state_id, int)
         _MPI_COMM.Send(send_state_id, self.source, self.tag)
 
@@ -113,17 +125,18 @@ class COMM_WORLD:
 
     @staticmethod
     def Send(buf, dest, tag=0):
-        assert isinstance(buf, IntermediateState)
+        assert isinstance(buf, adarray)
         # 1. send the data
         _MPI_COMM.Send(buf._base, dest, tag)
         # 2. create the SendState
         buf._current_state = MpiSendState(buf._current_state, dest, tag)
         # 2. send the state_id of the SendState we just created
-        _MPI_COMM.Send(buf._current_state._state_id, dest, tag)
+        state_id = np.array(buf._current_state._state_id, dtype=int)
+        _MPI_COMM.Send(state_id, dest, tag)
 
     @staticmethod
     def Recv(buf, source, tag=0):
-        assert isinstance(buf, IntermediateState)
+        assert isinstance(buf, adarray)
         # 1. recv the data
         _MPI_COMM.Recv(buf._base, source, tag)
         # 2. recv the state_id of the matching SendState in the source process
@@ -140,24 +153,34 @@ def diff_tangent_mpi(f, u):
     forward, i.e., starting from u
     Must be call from all MPI processes collectively
     '''
+    diff_u = {}   # diff_u[state] = {rank_i: state_diff_u_i, ...}
+
     # backward sweep, populate diff_u with keys that contain all states
     # that f (directly or indirectly) depends on
-    diff_u = {}
+    print(COMM_WORLD.Get_rank(), 'Backward Sweep')
     to_visit = [f]
-    MpiSendState.start_waiting()
+    count_activating = 0
 
-    while to_visit or MpiSendState.is_waiting():
-        state = to_visit.pop(0)
-        if state not in diff_u:
-            diff_u[state] = {} # diff_u[state] = {rank_i: state_diff_u_i, ...}
-            to_visit.extend(state.froms())
+    while True:
+        while to_visit:
+            state = to_visit.pop(0)
+            if state not in diff_u:
+                diff_u[state] = {}   # see where diff_u is defined
+                to_visit.extend(state.froms())
 
-            if isinstance(state, MpiRecvState):
-                state.activate_remote()
+                if isinstance(state, MpiRecvState):
+                    state.activate_remote()
+                    count_activating += 1
 
         to_visit.extend(MpiSendState.newly_activated())
 
+        imbalance = np.array(count_activating - MpiSendState.count_activated())
+        _MPI_COMM.Allreduce(MPI.IN_PLACE, imbalance, MPI.SUM)
+        if int(imbalance) == 0:
+            break
+
     # forward sweep
+    print(COMM_WORLD.Get_rank(), 'Forward Sweep')
     for state in sorted(diff_u):  # iterate from earliest state
         if state is u:            # found u in the graph
             my_rank = _MPI_COMM.Get_rank()
@@ -166,7 +189,7 @@ def diff_tangent_mpi(f, u):
             ranks = set().union(*(diff_u[s].keys() for s in state.froms()))
             diff_u[state] = {}
             for rank in ranks:
-                dependees_diff_u = (diff_u[s].setdefault('rank', 0)
+                dependees_diff_u = (diff_u[s].setdefault(rank, 0)
                                     for s in state.froms())
                 diff_u[state][rank] = state.diff_tangent(dependees_diff_u)
 
@@ -175,30 +198,49 @@ def diff_tangent_mpi(f, u):
 
     return diff_u[f]
 
-def diff_adjoint(f, u):
-    '''
-    Computes derivative of f with respect to u, by accumulating Jacobian
-    backwards, i.e., starting from f
-    '''
-    # forward sweep, populate f_diff with keys that contain all state
-    # that (directly or indirectly) depends on u
-    f_diff = {}
-    to_visit = [u]
-    while to_visit:
-        state = to_visit.pop(0)
-        if state not in f_diff:
-            f_diff[state] = 0
-            to_visit.extend(state.tos())
+# ------------------ differentiation ------------------ #
 
-    # backward sweep
-    for state in sorted(f_diff, reverse=True):  # iterate from latest state
-        if state is f:            # found f in the graph
-            f_diff[state] = sp.eye(f.size, f.size)
-        else:                     # compute derivative from its dependees
-            f_diff_dependers = (f_diff[s] for s in state.tos())
-            f_diff[state] = state.diff_adjoint(f_diff_dependers)
+def diff_mpi(f, u, mode='auto'):
+    if mode == 'tangent':
+        derivative = diff_tangent_mpi(f._current_state, u._initial_state)
+    else:
+        raise NotImplementedError()
 
-    return f_diff[u]
+    return derivative
+
+
+# =========================================================== #
+#                                                             #
+#                         unittests                           #
+#                                                             #
+# =========================================================== #
+
+class _SimpleSendRecv(unittest.TestCase):
+    def testSendRecv(self):
+        self.assertGreater(COMM_WORLD.Get_size(), 1)
+
+        N = 10
+        u = ones(N)
+        if COMM_WORLD.Get_rank() == 0:
+            COMM_WORLD.Recv(u, 1)
+        elif COMM_WORLD.Get_rank() == 1:
+            COMM_WORLD.Send(u, 0)
+        f = u * u
+        f_diff_u = diff_mpi(f, u, mode='tangent')
+
+        if COMM_WORLD.Get_rank() == 0:
+            nz_rank = 1
+        else:
+            nz_rank = COMM_WORLD.Get_rank()
+
+        discrepancy = f_diff_u[nz_rank] - 2 * sp.eye(N, N)
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        for rank in range(COMM_WORLD.Get_size()):
+            if rank != nz_rank and rank in f_diff_u:
+                self.assertEqual(f_diff_u[rank], 0)
 
 if __name__ == '__main__':
+    from numpad import *
     unittest.main()

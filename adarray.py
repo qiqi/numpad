@@ -772,23 +772,26 @@ class adarray:
     def __repr__(self):
         return 'ad' + repr(self._base)
 
-    # ------------------ differentiation ------------------ #
-
     def diff(self, u, mode='auto'):
-        if mode == 'auto':
-            if u.size < self.size:
-                mode = 'tangent'
-            else:
-                mode = 'adjoint'
+        return diff(self, u, mode)
 
-        if mode == 'tangent':
-            derivative = diff_tangent(self._current_state, u._initial_state)
-        elif mode == 'adjoint':
-            derivative = diff_adjoint(self._current_state, u._initial_state)
+# ------------------ differentiation ------------------ #
+
+def diff(f, u, mode='auto'):
+    if mode == 'auto':
+        if u.size < f.size:
+            mode = 'tangent'
         else:
-            raise NotImplementedError()
+            mode = 'adjoint'
 
-        return derivative
+    if mode == 'tangent':
+        derivative = diff_tangent(f._current_state, u._initial_state)
+    elif mode == 'adjoint':
+        derivative = diff_adjoint(f._current_state, u._initial_state)
+    else:
+        raise NotImplementedError()
+
+    return derivative
 
 
 # =========================================================== #
