@@ -124,6 +124,12 @@ class COMM_WORLD:
         return _MPI_COMM.Get_size()
 
     @staticmethod
+    def Barrier():
+        return _MPI_COMM.Barrier()
+
+    # ------------- interesting stuff begins here -------------- #
+
+    @staticmethod
     def Send(buf, dest, tag=0):
         assert isinstance(buf, adarray)
         # 1. send the data
@@ -157,9 +163,9 @@ def diff_tangent_mpi(f, u):
 
     # backward sweep, populate diff_u with keys that contain all states
     # that f (directly or indirectly) depends on
-    print(COMM_WORLD.Get_rank(), 'Backward Sweep')
     to_visit = [f]
     count_activating = 0
+    MpiSendState.start_waiting()
 
     while True:
         while to_visit:
@@ -172,15 +178,16 @@ def diff_tangent_mpi(f, u):
                     state.activate_remote()
                     count_activating += 1
 
-        to_visit.extend(MpiSendState.newly_activated())
-
         imbalance = np.array(count_activating - MpiSendState.count_activated())
         _MPI_COMM.Allreduce(MPI.IN_PLACE, imbalance, MPI.SUM)
-        if int(imbalance) == 0:
+        if imbalance == 0:
             break
+        else:
+            assert imbalance > 0
+            to_visit.extend(MpiSendState.newly_activated())
+
 
     # forward sweep
-    print(COMM_WORLD.Get_rank(), 'Forward Sweep')
     for state in sorted(diff_u):  # iterate from earliest state
         if state is u:            # found u in the graph
             my_rank = _MPI_COMM.Get_rank()
@@ -228,19 +235,84 @@ class _SimpleSendRecv(unittest.TestCase):
         f = u * u
         f_diff_u = diff_mpi(f, u, mode='tangent')
 
+        # check result
         if COMM_WORLD.Get_rank() == 0:
             nz_rank = 1
         else:
             nz_rank = COMM_WORLD.Get_rank()
 
-        discrepancy = f_diff_u[nz_rank] - 2 * sp.eye(N, N)
+        # discrepancy = f_diff_u[nz_rank] - 2 * sp.eye(N, N)
+        # if discrepancy.nnz > 0:
+        #     self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        # for rank in f_diff_u:
+        #     if rank != nz_rank:
+        #         self.assertEqual(f_diff_u[rank], 0)
+
+    def testPoisson1DResidual(self):
+        N = 10000
+        u = random(N)
+        dx = 1. / (N * COMM_WORLD.Get_size() + 1)
+
+        u_right = zeros(1)
+        u_left = zeros(1)
+
+        my_rank = COMM_WORLD.Get_rank()
+        if my_rank > 0:
+            COMM_WORLD.Send(u[:1], my_rank - 1)
+        if my_rank < COMM_WORLD.Get_size() - 1:
+            COMM_WORLD.Recv(u_right, my_rank + 1)
+
+        if my_rank < COMM_WORLD.Get_size() - 1:
+            COMM_WORLD.Send(u[-1:], my_rank + 1)
+        if my_rank > 0:
+            COMM_WORLD.Recv(u_left, my_rank - 1)
+
+        u_ext = hstack([u_left, u, u_right])
+        f = (u_ext[2:] + u_ext[:-2] - 2 * u_ext[1:-1]) / dx**2
+
+        f_diff_u = diff_mpi(f, u, 'tangent')
+
+        lapl = -2 * sp.eye(N,N) \
+             + sp.dia_matrix((np.ones(N), 1), (N,N)) \
+             + sp.dia_matrix((np.ones(N), -1), (N,N))
+
+        # check diagonal blocks
+        my_rank = COMM_WORLD.Get_rank()
+        discrepancy = f_diff_u[my_rank] - lapl / dx**2
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
+        # lower diagonal blocks
+        lapl_l = sp.csr_matrix(([1.], ([0], [N-1])), shape=(N,N))
+        if my_rank > 0:
+            discrepancy = f_diff_u[my_rank-1] - lapl_l / dx**2
+            if discrepancy.nnz > 0:
+                self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        # upper diagonal blocks
+        lapl_u = lapl_l.T
+        if my_rank < COMM_WORLD.Get_size() - 1:
+            discrepancy = f_diff_u[my_rank+1] - lapl_u / dx**2
+            if discrepancy.nnz > 0:
+                self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+        # other blocks are 0
         for rank in range(COMM_WORLD.Get_size()):
-            if rank != nz_rank and rank in f_diff_u:
+            if abs(rank - my_rank) > 1 and rank in f_diff_u:
                 self.assertEqual(f_diff_u[rank], 0)
+
 
 if __name__ == '__main__':
     from numpad import *
+
+    # for my_rank in range(COMM_WORLD.Get_size()):
+    #     COMM_WORLD.Barrier()
+    #     if my_rank != COMM_WORLD.Get_rank(): continue
+    #     for rank in sorted(f_diff_u):
+    #         if hasattr(f_diff_u[rank], 'todense'):
+    #             print(my_rank, rank, f_diff_u[rank].todense())
+    #         else:
+    #             print(my_rank, rank, f_diff_u[rank])
+
     unittest.main()

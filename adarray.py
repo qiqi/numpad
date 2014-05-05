@@ -146,6 +146,10 @@ def ones(*args, **kargs):
     return array(np.ones(*args, **kargs))
 
 @append_docstring_from_numpy
+def empty(*args, **kargs):
+    return array(np.empty(*args, **kargs))
+
+@append_docstring_from_numpy
 def random(*args, **kargs):
     return array(np.random.random(*args, **kargs))
 

@@ -89,7 +89,7 @@ class interp:
         return yp
 
 
-class SanityCheck(unittest.TestCase):
+class _SanityCheck(unittest.TestCase):
     def testMatch(self):
         N = 11
         x0 = random(N); x0.sort()
