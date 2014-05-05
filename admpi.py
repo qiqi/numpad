@@ -17,11 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import division, print_function, absolute_import
+
 import os
 import sys
-import pdb
 import unittest
-import numbers
 import weakref
 import pickle
 import numpy as np
@@ -226,7 +226,7 @@ class _SimpleSendRecv(unittest.TestCase):
     def testSendRecv(self):
         self.assertGreater(COMM_WORLD.Get_size(), 1)
 
-        N = 10
+        N = 10000
         u = ones(N)
         if COMM_WORLD.Get_rank() == 0:
             COMM_WORLD.Recv(u, 1)
@@ -241,13 +241,13 @@ class _SimpleSendRecv(unittest.TestCase):
         else:
             nz_rank = COMM_WORLD.Get_rank()
 
-        # discrepancy = f_diff_u[nz_rank] - 2 * sp.eye(N, N)
-        # if discrepancy.nnz > 0:
-        #     self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+        discrepancy = f_diff_u[nz_rank] - 2 * sp.eye(N, N)
+        if discrepancy.nnz > 0:
+            self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
-        # for rank in f_diff_u:
-        #     if rank != nz_rank:
-        #         self.assertEqual(f_diff_u[rank], 0)
+        for rank in f_diff_u:
+            if rank != nz_rank:
+                self.assertEqual(f_diff_u[rank], 0)
 
     def testPoisson1DResidual(self):
         N = 10000
@@ -273,11 +273,11 @@ class _SimpleSendRecv(unittest.TestCase):
 
         f_diff_u = diff_mpi(f, u, 'tangent')
 
+        # check diagonal blocks
         lapl = -2 * sp.eye(N,N) \
              + sp.dia_matrix((np.ones(N), 1), (N,N)) \
              + sp.dia_matrix((np.ones(N), -1), (N,N))
 
-        # check diagonal blocks
         my_rank = COMM_WORLD.Get_rank()
         discrepancy = f_diff_u[my_rank] - lapl / dx**2
         if discrepancy.nnz > 0:
@@ -305,6 +305,32 @@ class _SimpleSendRecv(unittest.TestCase):
 
 if __name__ == '__main__':
     from numpad import *
+
+    # # 4th order derivative test
+    # N = 4
+    # u = random(N)
+    # dx = 1. # / (N * COMM_WORLD.Get_size() + 1)
+
+    # f = u
+    # for i in range(2):
+    #     f_right = zeros(1)
+    #     f_left = zeros(1)
+
+    #     my_rank = COMM_WORLD.Get_rank()
+    #     if my_rank > 0:
+    #         COMM_WORLD.Send(f[:1], my_rank - 1)
+    #     if my_rank < COMM_WORLD.Get_size() - 1:
+    #         COMM_WORLD.Recv(f_right, my_rank + 1)
+
+    #     if my_rank < COMM_WORLD.Get_size() - 1:
+    #         COMM_WORLD.Send(f[-1:], my_rank + 1)
+    #     if my_rank > 0:
+    #         COMM_WORLD.Recv(f_left, my_rank - 1)
+
+    #     f_ext = hstack([f_left, f, f_right])
+    #     f = (f_ext[2:] + f_ext[:-2] - 2 * f_ext[1:-1]) / dx**2
+
+    # f_diff_u = diff_mpi(f, u, 'tangent')
 
     # for my_rank in range(COMM_WORLD.Get_size()):
     #     COMM_WORLD.Barrier()

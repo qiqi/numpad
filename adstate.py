@@ -17,6 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import division, print_function, absolute_import
+
 import os
 import sys
 import unittest
@@ -276,7 +278,10 @@ def _multiply_ops(op0, op1):
     if op0 is 0 or op1 is 0:
         return 0
     else:
-        return tocsr(op0) * tocsr(op1)
+        op = tocsr(op0) * tocsr(op1)
+        if hasattr(op, 'nnz') and op.nnz == 0:
+            op = 0
+        return op
 
 if __name__ == '__main__':
     unittest.main()
