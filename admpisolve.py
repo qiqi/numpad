@@ -30,9 +30,7 @@ import sys
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
-from scipy.lib.six.moves import xrange
 from scipy.linalg import get_blas_funcs
-from .utils import make_system
 
 from mpi4py import MPI
 _MPI_COMM = MPI.COMM_WORLD
@@ -48,7 +46,15 @@ def _norm2(q):
     _MPI_COMM.Allreduce(MPI.IN_PLACE, nrm2_sq, MPI.SUM)
     return float(np.sqrt(nrm2_sq))
 
-def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
+def _dot(p, q):
+    p, q = np.asarray(p), np.asarray(q)
+    assert p.dtype == q.dtype
+    dot = get_blas_funcs('dot', dtype=q.dtype)
+    p_dot_q = np.array(dot(q))
+    _MPI_COMM.Allreduce(MPI.IN_PLACE, p_dot_q, MPI.SUM)
+    return float(p_dot_q)
+
+def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
            inner_m=30, outer_k=3, outer_v=None, store_outer_Av=True):
     """
     Solve a matrix equation using the LGMRES algorithm.
@@ -135,7 +141,8 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
     """
     from scipy.linalg.basic import lstsq
-    A,M,x,b,postprocess = make_system(A,M,x0,b)
+    # A,M,x,b,postprocess = make_system(A,M,x0,b)
+    x = x0
 
     if not np.isfinite(b).all():
         raise ValueError("RHS must contain only finite numbers")
@@ -146,13 +153,13 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
     if outer_v is None:
         outer_v = []
 
-    axpy, dot, scal = None, None, None
+    axpy, scal = None, None
 
     b_norm = _norm2(b)
     if b_norm == 0:
         b_norm = 1
 
-    for k_outer in xrange(maxiter):
+    for k_outer in range(maxiter):
         r_outer = matvec(x) - b
 
         # -- callback
@@ -161,10 +168,11 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
         # -- determine input type routines
         if axpy is None:
-            if np.iscomplexobj(r_outer) and not np.iscomplexobj(x):
-                x = x.astype(r_outer.dtype)
-            axpy, dot, scal = get_blas_funcs(['axpy', 'dot', 'scal'],
-                                              (x, r_outer))
+            # if np.iscomplexobj(r_outer) and not np.iscomplexobj(x):
+            #     x = x.astype(r_outer.dtype)
+            # axpy, dot, scal = get_blas_funcs(['axpy', 'dot', 'scal'],
+            #                                   (x, r_outer))
+            axpy, scal = get_blas_funcs(['axpy', 'scal'], (x, r_outer))
 
         # -- check stopping condition
         r_norm = _norm2(r_outer)
@@ -186,7 +194,7 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
         ws = []
         y = None
 
-        for j in xrange(1, 1 + inner_m + len(outer_v)):
+        for j in range(1, 1 + inner_m + len(outer_v)):
             # -- Arnoldi process:
             #
             #    Build an orthonormal basis V and matrices W and H such that
@@ -241,7 +249,7 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
             #     ++ orthogonalize
             hcur = []
             for v in vs:
-                alpha = dot(v, v_new)
+                alpha = _dot(v, v_new)
                 hcur.append(alpha)
                 v_new = axpy(v, v_new, v.shape[0], -alpha)  # v_new -= alpha*v
             hcur.append(_norm2(v_new))
@@ -271,7 +279,7 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
             hess = np.zeros((j+1, j), x.dtype)
             e1 = np.zeros((j+1,), x.dtype)
             e1[0] = inner_res_0
-            for q in xrange(j):
+            for q in range(j):
                 hess[:(q+2),q] = hs[q]
 
             y, resids, rank, s = lstsq(hess, e1)
@@ -305,10 +313,19 @@ def lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
         x += dx
     else:
         # didn't converge ...
-        return postprocess(x), maxiter
+        return x, maxiter
 
-    return postprocess(x), 0
+    return x, 0
 
+def _A(f_diff_u):
+    class MatvecOperator:
+        def matvec(self):
+    return MatvecOperator()
+
+def _M(f_diff_u):
+    class ApproxInverse:
+        def matvec(self):
+    return ApproxInverse()
 
 N = 10000
 u = zeros(N)

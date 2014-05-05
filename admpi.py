@@ -34,6 +34,9 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.adstate import *
 
+
+# ----------- Subclassing IntermediateState ----------- #
+
 class MpiSendState(IntermediateState):
     '''
     '''
@@ -47,6 +50,9 @@ class MpiSendState(IntermediateState):
         self.cls_send_states[self._state_id] = self 
 
     def after_diff_tangent(self, self_diff_u):
+        '''
+        send self_diff_u to remote after diff_tangent computes it
+        '''
         buf = np.fromstring(pickle.dumps(self_diff_u), 'c')
         _MPI_COMM.Send((buf, MPI.BYTE), self.dest, self.tag)
 
@@ -91,6 +97,10 @@ class MpiRecvState(IntermediateState):
         self.cls_recv_states[(source, send_state_id)] = weakref.ref(self)
 
     def after_diff_tangent(self, self_diff_u):
+        '''
+        add the remote self_diff_u value to the local value computed
+        by diff_tangent
+        '''
         status = MPI.Status()
         _MPI_COMM.Probe(self.source, self.tag, status)
         buf = np.empty(status.count, 'c')
@@ -104,12 +114,18 @@ class MpiRecvState(IntermediateState):
                 self_diff_u[rank] = diff_remote
 
     def activate_remote(self):
+        '''
+        In the backwards sweep of tangent differentiation, inform
+        that the remote MpiSendState that f depends on it
+        '''
         send_state_id = np.array(self.send_state_id, int)
         _MPI_COMM.Send(send_state_id, self.source, self.tag)
 
     # centralized management of all MpIRecvState objects
     cls_recv_states = {}  # weak refs
 
+
+# ----------- Overloading MPI calls ------------ #
 
 class COMM_WORLD:
     '''
@@ -153,6 +169,13 @@ class COMM_WORLD:
                                           int(send_state_id))
 
 
+# ----------- Jacobian in parallel ------------ #
+def MpiJacobian(dict):
+    pass
+
+# ----------- tangent and adjoint differentiation in parallel ------------ #
+#                   in the IntermediateState (low) level
+
 def diff_tangent_mpi(f, u):
     '''
     Computes derivative of f with respect to u, by accumulating Jacobian
@@ -171,7 +194,7 @@ def diff_tangent_mpi(f, u):
         while to_visit:
             state = to_visit.pop(0)
             if state not in diff_u:
-                diff_u[state] = {}   # see where diff_u is defined
+                diff_u[state] = MpiJacobian()   # see where diff_u is defined
                 to_visit.extend(state.froms())
 
                 if isinstance(state, MpiRecvState):
@@ -194,7 +217,7 @@ def diff_tangent_mpi(f, u):
             diff_u[state] = {my_rank: sp.eye(u.size, u.size)}
         else:                     # compute derivative from its dependees
             ranks = set().union(*(diff_u[s].keys() for s in state.froms()))
-            diff_u[state] = {}
+            diff_u[state] = MpiJacobian()
             for rank in ranks:
                 dependees_diff_u = (diff_u[s].setdefault(rank, 0)
                                     for s in state.froms())
@@ -205,7 +228,7 @@ def diff_tangent_mpi(f, u):
 
     return diff_u[f]
 
-# ------------------ differentiation ------------------ #
+# --------------- differentiation of adarray (high level) --------------- #
 
 def diff_mpi(f, u, mode='auto'):
     if mode == 'tangent':
