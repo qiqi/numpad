@@ -150,7 +150,7 @@ class COMM_WORLD:
     def Send(buf, dest, tag=0):
         assert isinstance(buf, adarray)
         # 1. send the data
-        _MPI_COMM.Send(buf._base, dest, tag)
+        _MPI_COMM.Send(buf._value, dest, tag)
         # 2. create the SendState
         buf._current_state = MpiSendState(buf._current_state, dest, tag)
         # 2. send the state_id of the SendState we just created
@@ -161,7 +161,7 @@ class COMM_WORLD:
     def Recv(buf, source, tag=0):
         assert isinstance(buf, adarray)
         # 1. recv the data
-        _MPI_COMM.Recv(buf._base, source, tag)
+        _MPI_COMM.Recv(buf._value, source, tag)
         # 2. recv the state_id of the matching SendState in the source process
         send_state_id = np.empty((), int)
         _MPI_COMM.Recv(send_state_id, source, tag)

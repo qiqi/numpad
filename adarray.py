@@ -61,7 +61,7 @@ def _DEBUG_perturb_verify(output, message=''):
     generate AssertionError if the error norm exceeds the tolerance.
     '''
     if not __DEBUG_MODE__: return
-    assert np.isfinite(output._base).all()
+    assert np.isfinite(output._value).all()
     out_perturb = np.zeros(output.size)
     for var, var_perturb in __DEBUG_SEED_ARRAYS__:
         J = output.diff(var)
@@ -107,16 +107,16 @@ def adstate_count():
 
 # --------------------- utilities --------------------- #
 
-def base(a):
+def value(a):
     '''
-    Return the "base" of an adarray "a".  The base is a numpy.ndarray
+    Return the "value" of an adarray "a".  The value is a numpy.ndarray
     object containing all the data of a.
     If a is a number of a numpy.ndarray, then return a itself.
     '''
     if isinstance(a, (numbers.Number, np.ndarray, list)):
         return a
     else:
-        return a._base
+        return a._value
 
 # --------------------- adarray construction --------------------- #
 def append_docstring_from_numpy(f):
@@ -198,16 +198,16 @@ def exp(x, out=None):
     x = array(x)
 
     if out is None:
-        out = adarray(np.exp(x._base))
+        out = adarray(np.exp(x._value))
     else:
-        np.exp(x._base, out._base)
+        np.exp(x._value, out._value)
         out.next_state(0, op_name='0')
 
-    multiplier = dia_jac(np.exp(np.ravel(x._base)))
+    multiplier = dia_jac(np.exp(np.ravel(x._value)))
     out.next_state(multiplier, x, op_name='exp')
 
     if __DEBUG_MODE__:
-        out._DEBUG_perturb = np.exp(x._base) * _DEBUG_perturb_retrieve(x)
+        out._DEBUG_perturb = np.exp(x._value) * _DEBUG_perturb_retrieve(x)
         _DEBUG_perturb_verify(out)
     return out
 
@@ -220,15 +220,15 @@ def sin(x, out=None):
     x = array(x)
 
     if out is None:
-        out = adarray(np.sin(x._base))
+        out = adarray(np.sin(x._value))
     else:
-        np.sin(x._base, out._base)
+        np.sin(x._value, out._value)
         out.next_state(0, op_name='0')
-    multiplier = dia_jac(np.cos(np.ravel(x._base)))
+    multiplier = dia_jac(np.cos(np.ravel(x._value)))
     out.next_state(multiplier, x, op_name='sin')
 
     if __DEBUG_MODE__:
-        out._DEBUG_perturb = np.cos(x._base) * _DEBUG_perturb_retrieve(x)
+        out._DEBUG_perturb = np.cos(x._value) * _DEBUG_perturb_retrieve(x)
         _DEBUG_perturb_verify(out)
     return out
 
@@ -237,15 +237,15 @@ def cos(x, out=None):
     x = array(x)
 
     if out is None:
-        out = adarray(np.cos(x._base))
+        out = adarray(np.cos(x._value))
     else:
-        np.cos(x._base, out._base)
+        np.cos(x._value, out._value)
         out.next_state(0, op_name='0')
-    multiplier = dia_jac(-np.sin(np.ravel(x._base)))
+    multiplier = dia_jac(-np.sin(np.ravel(x._value)))
     out.next_state(multiplier, x, 'cos')
 
     if __DEBUG_MODE__:
-        out._DEBUG_perturb = -np.sin(x._base) * _DEBUG_perturb_retrieve(x)
+        out._DEBUG_perturb = -np.sin(x._value) * _DEBUG_perturb_retrieve(x)
         _DEBUG_perturb_verify(out)
     return out
 
@@ -254,15 +254,15 @@ def log(x, out=None):
     x = array(x)
 
     if out is None:
-        out = adarray(np.log(x._base))
+        out = adarray(np.log(x._value))
     else:
-        np.log(x._base, out._base)
+        np.log(x._value, out._value)
         out.next_state(0, op_name='0')
-    multiplier = dia_jac(1. / np.ravel(x._base))
+    multiplier = dia_jac(1. / np.ravel(x._value))
     out.next_state(multiplier, x, 'log')
 
     if __DEBUG_MODE__:
-        out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._base
+        out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) / x._value
         _DEBUG_perturb_verify(out)
     return out
 
@@ -271,17 +271,17 @@ def tanh(x, out=None):
     x = array(x)
 
     if out is None:
-        out = adarray(np.tanh(x._base))
+        out = adarray(np.tanh(x._value))
     else:
-        np.tanh(x._base, out._base)
+        np.tanh(x._value, out._value)
         out.next_state(0, op_name='0')
 
-    multiplier = dia_jac(1 - np.tanh(np.ravel(x._base))**2)
+    multiplier = dia_jac(1 - np.tanh(np.ravel(x._value))**2)
     out.next_state(multiplier, x, 'tanh')
 
     if __DEBUG_MODE__:
         out._DEBUG_perturb = _DEBUG_perturb_retrieve(x) \
-                           * (1 - np.tanh(x._base)**2)
+                           * (1 - np.tanh(x._value)**2)
         _DEBUG_perturb_verify(out)
     return out
 
@@ -301,7 +301,7 @@ def array(a):
         for i in range(len(a)):
             a[i] = array(a[i])
         # make big array and add multipliers
-        adarray_a = adarray(np.array([ai._base for ai in a]))
+        adarray_a = adarray(np.array([ai._value for ai in a]))
         for i in range(len(a)):
             data = np.ones(a[i].size)
             j_data = np.arange(a[i].size)
@@ -326,7 +326,7 @@ def ravel(a):
 
 @append_docstring_from_numpy
 def copy(a):
-    a_copy = adarray(np.copy(base(a)))
+    a_copy = adarray(np.copy(value(a)))
     if isinstance(a, adarray):
         a_copy.next_state(1, a, 'cpy')
         if __DEBUG_MODE__:
@@ -339,7 +339,7 @@ def copy(a):
 @append_docstring_from_numpy
 def transpose(a, axes=None):
     a = array(a)
-    a_transpose = adarray(np.transpose(a._base, axes))
+    a_transpose = adarray(np.transpose(a._value, axes))
     i = np.arange(a.size).reshape(a.shape)
     j = np.transpose(i, axes)
     data = np.ones(i.size)
@@ -357,8 +357,8 @@ def concatenate(adarrays, axis=0):
     for a in adarrays:
         if a.ndim == 0:
             a = a[np.newaxis]
-        marker_arrays.append(len(ndarrays) * np.ones_like(a._base))
-        ndarrays.append(base(a))
+        marker_arrays.append(len(ndarrays) * np.ones_like(a._value))
+        ndarrays.append(value(a))
 
     concatenated_array = adarray(np.concatenate(ndarrays, axis))
     marker = np.ravel(np.concatenate(marker_arrays, axis))
@@ -399,11 +399,11 @@ def meshgrid(x, y):
 def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     assert dtype is None and out is None
     a = array(a)
-    sum_a = adarray(np.sum(a._base, axis, keepdims=keepdims))
+    sum_a = adarray(np.sum(a._value, axis, keepdims=keepdims))
 
-    shape = np.sum(a._base, axis, keepdims=True).shape
+    shape = np.sum(a._value, axis, keepdims=True).shape
     j = np.arange(sum_a.size).reshape(shape)
-    i = np.ravel(j + np.zeros_like(a._base, int))
+    i = np.ravel(j + np.zeros_like(a._value, int))
     j = np.ravel(a._ind)
     data = np.ones(i.size, int)
     multiplier = csr_jac(data, i, j, shape=(sum_a.size, a.size))
@@ -421,7 +421,7 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=False):
 
 @append_docstring_from_numpy
 def rollaxis(a, axis, start=0):
-    b = adarray(np.rollaxis(a._base, axis, start))
+    b = adarray(np.rollaxis(a._value, axis, start))
 
     data = np.ones(a.size)
     j = np.ravel(a._ind)
@@ -447,12 +447,12 @@ def dot(a, b):
 
 class adarray:
     def __init__(self, array):
-        self._base = np.asarray(base(array), np.float64)
+        self._value = np.asarray(value(array), np.float64)
         self._ind = np.arange(self.size).reshape(self.shape)
         self._current_state = InitialState(self)
 
     # def __array__(self):
-    #     return self._base
+    #     return self._value
 
     def _ind_casted_to(self, shape):
         ind = np.zeros(shape, dtype=int)
@@ -482,19 +482,19 @@ class adarray:
 
     @property
     def size(self):
-        return self._base.size
+        return self._value.size
     @property
     def shape(self):
-        return self._base.shape
+        return self._value.shape
     @property
     def ndim(self):
-        return self._base.ndim
+        return self._value.ndim
     @property
     def T(self):
         return self.transpose()
 
     def __len__(self):
-        return self._base.__len__()
+        return self._value.__len__()
 
     # ------------------ object operations ----------------- #
 
@@ -505,7 +505,7 @@ class adarray:
         return transpose(self, axes)
 
     def reshape(self, shape):
-        reshaped = adarray(self._base.reshape(shape))
+        reshaped = adarray(self._value.reshape(shape))
         if self.size > 0:
             reshaped.next_state(1, self, 'reshape')
         if __DEBUG_MODE__:
@@ -516,8 +516,8 @@ class adarray:
         '''
         sort in place
         '''
-        ind = np.argsort(self._base, axis, kind)
-        self._base.sort(axis, kind)
+        ind = np.argsort(self._value, axis, kind)
+        self._value.sort(axis, kind)
 
         j = np.ravel(self._ind[ind])
         i = np.arange(j.size)
@@ -531,52 +531,52 @@ class adarray:
     # ------------------ boolean operations ----------------- #
 
 #     def __eq__(self, a):
-#         return array(self._base == base(a))
+#         return array(self._value == value(a))
 # 
 #     def __ne__(self, a):
-#         return array(self._base != base(a))
+#         return array(self._value != value(a))
 # 
 #     def __gt__(self, a):
-#         return array(self._base > base(a))
+#         return array(self._value > value(a))
 #     
 #     def __ge__(self, a):
-#         return array(self._base >= base(a))
+#         return array(self._value >= value(a))
 # 
 #     def __lt__(self, a):
-#         return array(self._base < base(a))
+#         return array(self._value < value(a))
 #     
 #     def __le__(self, a):
-#         return array(self._base <= base(a))
+#         return array(self._value <= value(a))
 # 
 #     def all(self):
-#         return self._base.all()
+#         return self._value.all()
 
     # ------------------ arithmetic operations ----------------- #
 
     def __add__(self, a):
         if isinstance(a, numbers.Number):
-            a_p_b = adarray(self._base + a)
+            a_p_b = adarray(self._value + a)
             a_p_b.next_state(1, self, '+')
         else:
             b = self
-            a_p_b = adarray(base(a) + base(b))
+            a_p_b = adarray(value(a) + value(b))
 
             if a.shape == b.shape:
-                if hasattr(a, '_base'):
+                if hasattr(a, '_value'):
                     a_p_b.next_state(1, a, '+')
-                if hasattr(b, '_base'):
+                if hasattr(b, '_value'):
                     a_p_b.next_state(1, b, '+')
             else:
                 # a, b, or both is "broadcasted" to fit the shape of each other
                 multiplier = np.ones(a_p_b.shape)
                 i = np.arange(a_p_b.size)
 
-                if hasattr(a, '_base') and multiplier.size > 0:
+                if hasattr(a, '_value') and multiplier.size > 0:
                     j_a = np.ravel(a._ind_casted_to(a_p_b.shape))
                     a_multiplier = csr_jac(np.ravel(multiplier), i, j_a,
                                            shape=(a_p_b.size, a.size))
                     a_p_b.next_state(a_multiplier, a, '+')
-                if hasattr(b, '_base') and multiplier.size > 0:
+                if hasattr(b, '_value') and multiplier.size > 0:
                     j_b = np.ravel(b._ind_casted_to(a_p_b.shape))
                     b_multiplier = csr_jac(np.ravel(multiplier), i, j_b,
                                            shape=(a_p_b.size, b.size))
@@ -593,9 +593,9 @@ class adarray:
 
     def __iadd__(self, a):
         if isinstance(a, (numbers.Number, np.ndarray)):
-            self._base += a
+            self._value += a
         else:
-            self._base += a._base
+            self._value += a._value
             if a.shape == self.shape:
                 self.next_state(1, a, '+')
             else:
@@ -608,7 +608,7 @@ class adarray:
         return self
 
     def __neg__(self):
-        neg_self = adarray(-self._base)
+        neg_self = adarray(-self._value)
         neg_self.next_state(-1, self, '-')
         if __DEBUG_MODE__:
             neg_self._DEBUG_perturb = -_DEBUG_perturb_retrieve(self)
@@ -629,48 +629,48 @@ class adarray:
 
     def __mul__(self, a):
         if isinstance(a, numbers.Number):
-            a_x_b = adarray(self._base * a)
+            a_x_b = adarray(self._value * a)
             a_x_b.next_state(a, self, '*')
             if __DEBUG_MODE__:
                 a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * a
                 _DEBUG_perturb_verify(a_x_b)
         else:
             b = self
-            a_x_b = adarray(base(a) * base(b))
+            a_x_b = adarray(value(a) * value(b))
 
             if a.shape == b.shape:
-                if hasattr(a, '_base'):
-                    a_x_b.next_state(dia_jac(base(b).ravel()), a, '*')
-                if hasattr(b, '_base'):
-                    a_x_b.next_state(dia_jac(base(a).ravel()), b, '*')
+                if hasattr(a, '_value'):
+                    a_x_b.next_state(dia_jac(value(b).ravel()), a, '*')
+                if hasattr(b, '_value'):
+                    a_x_b.next_state(dia_jac(value(a).ravel()), b, '*')
             else:
                 a_multiplier = np.zeros(a_x_b.shape)
                 b_multiplier = np.zeros(a_x_b.shape)
                 if a_multiplier.ndim:
-                    a_multiplier[:] = base(b)
+                    a_multiplier[:] = value(b)
                 else:
-                    a_multiplier = base(b).copy()
+                    a_multiplier = value(b).copy()
                 if b_multiplier.ndim:
-                    b_multiplier[:] = base(a).copy()
+                    b_multiplier[:] = value(a).copy()
                 else:
-                    b_multiplier = base(a).copy()
+                    b_multiplier = value(a).copy()
 
                 i = np.arange(a_x_b.size)
 
-                if hasattr(a, '_base') and a_x_b.size > 0:
+                if hasattr(a, '_value') and a_x_b.size > 0:
                     j_a = np.ravel(a._ind_casted_to(a_x_b.shape))
                     a_multiplier = csr_jac(np.ravel(a_multiplier), i, j_a,
                                            shape=(a_x_b.size, a.size))
                     a_x_b.next_state(a_multiplier, a, '*')
-                if hasattr(b, '_base') and a_x_b.size > 0:
+                if hasattr(b, '_value') and a_x_b.size > 0:
                     j_b = np.ravel(b._ind_casted_to(a_x_b.shape))
                     b_multiplier = csr_jac(np.ravel(b_multiplier), i, j_b,
                                            shape=(a_x_b.size, b.size))
                     a_x_b.next_state(b_multiplier, b, '*')
 
             if __DEBUG_MODE__:
-                a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
-                                     + base(self) * _DEBUG_perturb_retrieve(a)
+                a_x_b._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * value(a) \
+                                     + value(self) * _DEBUG_perturb_retrieve(a)
                 _DEBUG_perturb_verify(a_x_b)
         return a_x_b
 
@@ -679,20 +679,20 @@ class adarray:
 
     def __imul__(self, a):
         if isinstance(a, numbers.Number):
-            self._base *= a
+            self._value *= a
             self.next_state(a, op_name='*')
             if __DEBUG_MODE__:
                 self._DEBUG_perturb *= a
                 _DEBUG_perturb_verify(self)
         else:
-            multiplier = dia_jac(np.ravel(a._base.copy()))
+            multiplier = dia_jac(np.ravel(a._value.copy()))
             self.next_state(multiplier, op_name='*')
-            multiplier = dia_jac(np.ravel(self._base.copy()))
+            multiplier = dia_jac(np.ravel(self._value.copy()))
             self.next_state(multiplier, a, '*')
-            self._base *= a._base
+            self._value *= a._value
             if __DEBUG_MODE__:
-                self._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * base(a) \
-                                    + base(self) * _DEBUG_perturb_retrieve(a)
+                self._DEBUG_perturb = _DEBUG_perturb_retrieve(self) * value(a) \
+                                    + value(self) * _DEBUG_perturb_retrieve(a)
                 _DEBUG_perturb_verify(self)
         return self
 
@@ -711,14 +711,14 @@ class adarray:
     def __pow__(self, a):
         if not isinstance(a, numbers.Number):
             return NotImplemented
-        self_to_a = adarray(self._base ** a)
-        multiplier = a * np.ravel(self._base)**(a-1)
+        self_to_a = adarray(self._value ** a)
+        multiplier = a * np.ravel(self._value)**(a-1)
         if multiplier.size > 0:
             multiplier[~np.isfinite(multiplier)] = 0
             multiplier = dia_jac(multiplier)
             self_to_a.next_state(multiplier, self, '**')
         if __DEBUG_MODE__:
-            self_to_a._DEBUG_perturb = a * self._base**(a-1) \
+            self_to_a._DEBUG_perturb = a * self._value**(a-1) \
                                      * _DEBUG_perturb_retrieve(self)
             _DEBUG_perturb_verify(self_to_a)
         return self_to_a
@@ -735,7 +735,7 @@ class adarray:
     # ------------------ indexing ----------------- #
 
     def __getitem__(self, ind):
-        self_i = adarray(self._base[ind])
+        self_i = adarray(self._value[ind])
 
         j = np.ravel(self._ind[ind])
         if j.size > 0:
@@ -755,9 +755,9 @@ class adarray:
         multiplier = dia_jac(data)
         self.next_state(multiplier, op_name='[]=0')
 
-        self._base.__setitem__(ind, base(a))
+        self._value.__setitem__(ind, value(a))
 
-        if hasattr(a, '_base'):
+        if hasattr(a, '_value'):
             i = self._ind[ind]
             if i.size > 0:
                 j = a._ind_casted_to(i.shape)
@@ -773,10 +773,10 @@ class adarray:
     # ------------------ str, repr ------------------ #
 
     def __str__(self):
-        return str(self._base)
+        return str(self._value)
 
     def __repr__(self):
-        return 'ad' + repr(self._base)
+        return 'ad' + repr(self._value)
 
     def diff(self, u, mode='auto'):
         return diff(self, u, mode)
@@ -832,12 +832,12 @@ class _ManipulationTest(unittest.TestCase):
         c = dot(a, b)
 
         c_diff_b = c.diff(b)
-        discrepancy = c_diff_b - sp.kron(a._base, sp.eye(c.shape[1]))
+        discrepancy = c_diff_b - sp.kron(a._value, sp.eye(c.shape[1]))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
         c_diff_a = c.diff(a)
-        discrepancy = c_diff_a - sp.kron(sp.eye(c.shape[0]), b.T._base)
+        discrepancy = c_diff_a - sp.kron(sp.eye(c.shape[0]), b.T._value)
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
@@ -898,23 +898,23 @@ class _OperationsTest(unittest.TestCase):
         b = random(N)
         c = a * b * 5
         self.assertEqual(0, (c.diff(a, 'tangent') - \
-                5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
+                5 * sp.dia_matrix((b._value, 0), (N,N))).nnz)
         self.assertEqual(0, (c.diff(a, 'adjoint') - \
-                5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
+                5 * sp.dia_matrix((b._value, 0), (N,N))).nnz)
         self.assertEqual(0, (c.diff(b, 'tangent') - \
-                5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
+                5 * sp.dia_matrix((a._value, 0), (N,N))).nnz)
         self.assertEqual(0, (c.diff(b, 'adjoint') - \
-                5 * sp.dia_matrix((a._base, 0), (N,N))).nnz)
+                5 * sp.dia_matrix((a._value, 0), (N,N))).nnz)
 
     def testDiv(self):
         N = 10
         a = random(N)
         b = random(N)
         c = a / b / 2
-        discrepancy = c.diff(a) - sp.dia_matrix((1. / b._base / 2., 0), (N,N))
+        discrepancy = c.diff(a) - sp.dia_matrix((1. / b._value / 2., 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
-        discrepancy = c.diff(b) + sp.dia_matrix(((a / b**2)._base/2, 0), (N,N))
+        discrepancy = c.diff(b) + sp.dia_matrix(((a / b**2)._value/2, 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
@@ -923,7 +923,7 @@ class _OperationsTest(unittest.TestCase):
         a = random(N)
         b = 5
         c = a**b
-        discrepancy = c.diff(a) - sp.dia_matrix((b * a._base**(b-1), 0), (N,N))
+        discrepancy = c.diff(a) - sp.dia_matrix((b * a._value**(b-1), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
@@ -931,11 +931,11 @@ class _OperationsTest(unittest.TestCase):
         N = 10
         a = random(N)
         c = exp(a)
-        discrepancy = c.diff(a) - sp.dia_matrix((np.exp(a._base), 0), (N,N))
+        discrepancy = c.diff(a) - sp.dia_matrix((np.exp(a._value), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
         c = log(a)
-        discrepancy = c.diff(a) - sp.dia_matrix((1 / a._base, 0), (N,N))
+        discrepancy = c.diff(a) - sp.dia_matrix((1 / a._value, 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
@@ -944,10 +944,10 @@ class _OperationsTest(unittest.TestCase):
         a = random(N)
         b = sin(a)
         c = cos(a)
-        discrepancy = b.diff(a) - sp.dia_matrix((np.cos(a._base), 0), (N,N))
+        discrepancy = b.diff(a) - sp.dia_matrix((np.cos(a._value), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
-        discrepancy = c.diff(a) + sp.dia_matrix((np.sin(a._base), 0), (N,N))
+        discrepancy = c.diff(a) + sp.dia_matrix((np.sin(a._value), 0), (N,N))
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 

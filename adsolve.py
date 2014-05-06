@@ -119,11 +119,11 @@ class adsolution(adarray):
 
         residual._current_state = ResidualState(residual._current_state)
 
-        adarray.__init__(self, solution._base)
+        adarray.__init__(self, solution._value)
         self._current_state = SolutionState(self, residual._current_state,
                                             residual.diff(solution))
         self._n_Newton = n_Newton
-        self._res_norm = np.linalg.norm(residual._base)
+        self._res_norm = np.linalg.norm(residual._value)
 
         _DEBUG_perturb_new(self)
 
@@ -135,12 +135,12 @@ class adsolution(adarray):
 
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
-    u = adarray(base(u0).copy())
+    u = adarray(value(u0).copy())
     _DEBUG_perturb_new(u)
 
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
-        res_norm = np.linalg.norm(res._base, np.inf)
+        res_norm = np.linalg.norm(res._value, np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
         if not np.isfinite(res_norm):
@@ -153,9 +153,9 @@ def solve(func, u0, args=(), kargs={},
 
         # Newton update
         J = res.diff(u).tocsr()
-        minus_du = splinalg.spsolve(J, np.ravel(res._base), use_umfpack=False)
-        u._base -= minus_du.reshape(u.shape)
-        u = adarray(u._base)  # unlink operation history if any
+        minus_du = splinalg.spsolve(J, np.ravel(res._value), use_umfpack=False)
+        u._value -= minus_du.reshape(u.shape)
+        u = adarray(u._value)  # unlink operation history if any
         _DEBUG_perturb_new(u)
     # not converged
     return adsolution(u, res, np.inf)
@@ -185,16 +185,16 @@ class _Poisson1dTest(unittest.TestCase):
         u = solve(self.residual, u, (f, dx), verbose=False)
 
         x = np.linspace(0, 1, N+1)[1:-1]
-        self.assertAlmostEqual(0, np.abs(u._base - 0.5 * x * (1 - x)).max())
+        self.assertAlmostEqual(0, np.abs(u._value - 0.5 * x * (1 - x)).max())
 
         # solve tangent equation
         dudx = np.array(u.diff(dx)).reshape(u.shape)
-        self.assertAlmostEqual(0, np.abs(dudx - 2 * u._base / dx._base).max())
+        self.assertAlmostEqual(0, np.abs(dudx - 2 * u._value / dx._value).max())
 
         # solve adjoint equation
         J = u.sum()
         dJdf = J.diff(f)
-        self.assertAlmostEqual(0, np.abs(dJdf - u._base).max())
+        self.assertAlmostEqual(0, np.abs(dJdf - u._value).max())
 
 
 class _Poisson2dTest(unittest.TestCase):
@@ -225,13 +225,13 @@ class _Poisson2dTest(unittest.TestCase):
         dudy = np.array(u.diff(dy)).reshape(u.shape)
 
         self.assertAlmostEqual(0,
-            abs(2 * u._base - (dudx * dx._base + dudy * dy._base)).max())
+            abs(2 * u._value - (dudx * dx._value + dudy * dy._value)).max())
 
         # solve adjoint equation
         J = u.sum()
         dJdf = J.diff(f)
 
-        self.assertAlmostEqual(0, abs(np.ravel(u._base) - dJdf).max())
+        self.assertAlmostEqual(0, abs(np.ravel(u._value) - dJdf).max())
 
 
 if __name__ == '__main__':

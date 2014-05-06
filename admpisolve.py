@@ -66,15 +66,11 @@ class MpiJacobian:
         for rank, diff in diff_csr.items():
             if rank != my_rank:
                 num_offdiag_sent += 1
-                buf = pickle.dumps(diff)
-                buf = buf + b'\x00' * (np.ceil(len(buf) / 8.) * 8 - len(buf))
-                buf = np.fromstring(buf, 'c')
+                buf = np.fromstring(pickle.dumps(diff), 'c')
+                _MPI_COMM.Isend(buf.view(np.int8), rank, 0)
                 if my_rank == 2 and rank == 1:
                     open('1.pkl', 'wb').write(pickle.dumps(diff))
-                print('from ', my_rank, ' to ', rank, ' of len ', len(buf),
-                      len(pickle.dumps(diff)), diff)
-                print(buf.size)
-                _MPI_COMM.Send(buf.view(int), rank, 0)
+                # print('from ', my_rank, ' to ', rank, ' send ', ret)
 
         _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
 
@@ -85,16 +81,10 @@ class MpiJacobian:
         while num_offdiag_received < num_offdiag_sent:
             status = MPI.Status()
             while _MPI_COMM.Iprobe(MPI.ANY_SOURCE, 0, status):
-                print('FROM ', status.source, ' TO ', my_rank,
-                      ' of len ', status.count)
                 buf = np.empty(status.count, 'c')
-                _MPI_COMM.Recv(buf.view(int), status.source, 0)
-                try:
-                    diff_csc[status.source] = pickle.loads(buf.tostring())
-                except:
-                    print('ERROR IN ', my_rank, ' from ', status.source)
-                    open('2.pkl', 'wb').write(buf.tostring())
-                    raise
+                _MPI_COMM.Recv(buf.view(np.int8), status.source, 0)
+                # print('FROM ', status.source, ' TO ', my_rank, ' recv ', ret)
+                diff_csc[status.source] = pickle.loads(buf.tostring())
                 num_local_received += 1
 
             _MPI_COMM.Allreduce(np.array(num_local_received),
@@ -141,7 +131,7 @@ class MpiJacobian:
             self._find_to_and_from_ranks()
 
         for rank in self._to_ranks:
-            _MPI_COMM.Send(self._diff[rank] * du, rank, 0)
+            _MPI_COMM.Isend(self._diff[rank] * du, rank, 0)
 
         df_remote = np.empty(df.shape)
         for rank in self._from_ranks:
@@ -439,7 +429,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
 
 from numpad import *
-N = 10000
+N = 100000
 u = zeros(N)
 f = ones(N)
 dx = 1. / (N * COMM_WORLD.Get_size() + 1)
@@ -467,7 +457,7 @@ r_diff_u = diff_mpi(r, u, 'tangent')
 
 J = MpiJacobian(r_diff_u, 'CSR')
 
-uu, _ = _lgmres(J.matvec, r._base, x0=u._base, tol=1e-5, maxiter=1000,
+uu, _ = _lgmres(J.matvec, r._value, x0=u._value, tol=1e-5, maxiter=1000,
         M=J.approx_solve, callback=None,
         inner_m=30, outer_k=3, outer_v=None, store_outer_Av=True)
 
