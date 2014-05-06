@@ -39,6 +39,123 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.admpi import *
 
+# ----------- Jacobian in parallel ------------ #
+class MpiJacobian:
+    '''
+    mode='CSR': f_diff_u[rank_i] = df[my_rank] / du[rank_i]
+    mode='CSC': f_diff_u[rank_i] = df[rank_i] / du[my_rank]
+    '''
+    def __init__(self, f_diff_u, mode):
+        if mode == 'CSR':
+            f_diff_u = self._csr_to_csc(f_diff_u)
+        else:
+            assert mode == 'CSC'
+
+        self._diff = f_diff_u
+
+    @staticmethod
+    def _csr_to_csc(diff_csr):
+        diff_csc = {}
+        # diagonal
+        my_rank = _MPI_COMM.Get_rank()
+        diff_csc[my_rank] = diff_csr[my_rank]
+
+        # send the off-diagonal
+        num_offdiag_sent = np.zeros((), int)
+
+        for rank, diff in diff_csr.items():
+            if rank != my_rank:
+                num_offdiag_sent += 1
+                buf = np.fromstring(pickle.dumps(diff), 'c')
+                if my_rank == 2 and rank == 1:
+                    open('1.pkl', 'wb').write(pickle.dumps(diff))
+                print('from ', my_rank, ' to ', rank, ' of len ', len(buf),
+                      len(pickle.dumps(diff)), diff)
+                _MPI_COMM.Isend((buf, MPI.BYTE), rank, 0)
+
+        _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
+
+        # receive the off-diagonals
+        num_offdiag_received = np.zeros((), int)  # sum across processes
+        num_local_received = 0                    # by the current process
+
+        while num_offdiag_received < num_offdiag_sent:
+            status = MPI.Status()
+            while _MPI_COMM.Iprobe(MPI.ANY_SOURCE, 0, status):
+                print('FROM ', status.source, ' TO ', my_rank,
+                      ' of len ', status.count)
+                buf = np.empty(status.count, 'c')
+                _MPI_COMM.Recv((buf, MPI.BYTE), status.source, 0)
+                try:
+                    diff_csc[status.source] = pickle.loads(buf.tostring())
+                except:
+                    print('ERROR IN ', my_rank, ' from ', status.source)
+                    open('2.pkl', 'wb').write(buf.tostring())
+                    raise
+                num_local_received += 1
+
+            _MPI_COMM.Allreduce(np.array(num_local_received),
+                                num_offdiag_received, MPI.SUM)
+        return diff_csc
+
+    def _find_to_and_from_ranks(self):
+        self._to_ranks = set(self._diff)
+        self._to_ranks.discard(_MPI_COMM.Get_rank())
+
+        for rank in self._to_ranks:
+            if self._diff[rank] is 0 or self._diff[rank].nnz == 0:
+                self._to_ranks.discard(rank)
+                del self._diff[rank]
+
+        # send the off-diagonal
+        num_offdiag_sent = np.zeros((), int)
+        for rank in self._to_ranks:
+            num_offdiag_sent += 1
+            _MPI_COMM.Isend(np.zeros(0), rank, 0)
+        _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
+
+        # receive the off-diagonals
+        num_offdiag_received = np.zeros((), int)  # sum across processes
+        self._from_ranks = set()
+
+        while num_offdiag_received < num_offdiag_sent:
+            status = MPI.Status()
+            while _MPI_COMM.Iprobe(MPI.ANY_SOURCE, 0, status):
+                assert status.count == 0
+                _MPI_COMM.Recv(np.zeros(0), status.source, 0)
+                self._from_ranks.add(status.source)
+
+            _MPI_COMM.Allreduce(np.array(len(self._from_ranks)),
+                                num_offdiag_received, MPI.SUM)
+
+    # --------------- matvec and approximate inverse ------------ #
+
+    def matvec(self, du):
+        my_rank = _MPI_COMM.Get_rank()
+        df = self._diff[my_rank] * du
+
+        if not hasattr(self, '_to_ranks'):
+            self._find_to_and_from_ranks()
+
+        for rank in self._to_ranks:
+            _MPI_COMM.Isend(self._diff[rank] * du, rank, 0)
+
+        df_remote = np.empty(df.shape)
+        for rank in self._from_ranks:
+            _MPI_COMM.Recv(df_remote, rank, 0)
+            df += df_remote
+        return df
+
+    def approx_solve(self, df):
+        if not hasattr(self, '_diff_factorized'):
+            my_rank = _MPI_COMM.Get_rank()
+            self._diff_factorized = \
+                    splinalg.factorized(self._diff[my_rank].tocsc())
+        return self._diff_factorized(df)
+
+
+# ----------- iterative solvers ------------ #
+
 def _norm2(q):
     q = np.asarray(q)
     nrm2 = get_blas_funcs('nrm2', dtype=q.dtype)
@@ -50,7 +167,7 @@ def _dot(p, q):
     p, q = np.asarray(p), np.asarray(q)
     assert p.dtype == q.dtype
     dot = get_blas_funcs('dot', dtype=q.dtype)
-    p_dot_q = np.array(dot(q))
+    p_dot_q = np.array(dot(p, q))
     _MPI_COMM.Allreduce(MPI.IN_PLACE, p_dot_q, MPI.SUM)
     return float(p_dot_q)
 
@@ -147,8 +264,8 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
     if not np.isfinite(b).all():
         raise ValueError("RHS must contain only finite numbers")
 
-    matvec = A.matvec
-    psolve = M.matvec
+    matvec = A
+    psolve = M
 
     if outer_v is None:
         outer_v = []
@@ -317,16 +434,8 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
     return x, 0
 
-def _A(f_diff_u):
-    class MatvecOperator:
-        def matvec(self):
-    return MatvecOperator()
 
-def _M(f_diff_u):
-    class ApproxInverse:
-        def matvec(self):
-    return ApproxInverse()
-
+from numpad import *
 N = 10000
 u = zeros(N)
 f = ones(N)
@@ -351,6 +460,12 @@ def residual(u):
     return (u_ext[2:] + u_ext[:-2] - 2 * u_ext[1:-1]) / dx**2 - f
 
 r = residual(u)
-r_diff_u = diff_mpi(r, u)
+r_diff_u = diff_mpi(r, u, 'tangent')
 
+J = MpiJacobian(r_diff_u, 'CSR')
 
+uu, _ = _lgmres(J.matvec, r._base, x0=u._base, tol=1e-5, maxiter=1000,
+        M=J.approx_solve, callback=None,
+        inner_m=30, outer_k=3, outer_v=None, store_outer_Av=True)
+
+# print(COMM_WORLD.Get_rank(), uu)

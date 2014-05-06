@@ -33,6 +33,7 @@ _MPI_COMM = MPI.COMM_WORLD
 sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.adstate import *
+from numpad.adarray import adarray
 
 
 # ----------- Subclassing IntermediateState ----------- #
@@ -169,10 +170,6 @@ class COMM_WORLD:
                                           int(send_state_id))
 
 
-# ----------- Jacobian in parallel ------------ #
-def MpiJacobian(dict):
-    pass
-
 # ----------- tangent and adjoint differentiation in parallel ------------ #
 #                   in the IntermediateState (low) level
 
@@ -182,6 +179,7 @@ def diff_tangent_mpi(f, u):
     forward, i.e., starting from u
     Must be call from all MPI processes collectively
     '''
+    my_rank = _MPI_COMM.Get_rank()
     diff_u = {}   # diff_u[state] = {rank_i: state_diff_u_i, ...}
 
     # backward sweep, populate diff_u with keys that contain all states
@@ -194,7 +192,7 @@ def diff_tangent_mpi(f, u):
         while to_visit:
             state = to_visit.pop(0)
             if state not in diff_u:
-                diff_u[state] = MpiJacobian()   # see where diff_u is defined
+                diff_u[state] = {}  # see diff_u
                 to_visit.extend(state.froms())
 
                 if isinstance(state, MpiRecvState):
@@ -209,15 +207,13 @@ def diff_tangent_mpi(f, u):
             assert imbalance > 0
             to_visit.extend(MpiSendState.newly_activated())
 
-
     # forward sweep
     for state in sorted(diff_u):  # iterate from earliest state
         if state is u:            # found u in the graph
-            my_rank = _MPI_COMM.Get_rank()
             diff_u[state] = {my_rank: sp.eye(u.size, u.size)}
         else:                     # compute derivative from its dependees
             ranks = set().union(*(diff_u[s].keys() for s in state.froms()))
-            diff_u[state] = MpiJacobian()
+            diff_u[state] = {}
             for rank in ranks:
                 dependees_diff_u = (diff_u[s].setdefault(rank, 0)
                                     for s in state.froms())
@@ -225,6 +221,10 @@ def diff_tangent_mpi(f, u):
 
             if hasattr(state, 'after_diff_tangent'):
                 state.after_diff_tangent(diff_u[state])
+
+    # the diagonal block is responsible for knowing the shape
+    if my_rank not in diff_u[f] or diff_u[f][my_rank] is 0:
+        diff_u[f][my_rank] = sp.csr_matrix((f.size, u.size))
 
     return diff_u[f]
 
