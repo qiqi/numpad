@@ -66,12 +66,15 @@ class MpiJacobian:
         for rank, diff in diff_csr.items():
             if rank != my_rank:
                 num_offdiag_sent += 1
-                buf = np.fromstring(pickle.dumps(diff), 'c')
+                buf = pickle.dumps(diff)
+                buf = buf + b'\x00' * (np.ceil(len(buf) / 8.) * 8 - len(buf))
+                buf = np.fromstring(buf, 'c')
                 if my_rank == 2 and rank == 1:
                     open('1.pkl', 'wb').write(pickle.dumps(diff))
                 print('from ', my_rank, ' to ', rank, ' of len ', len(buf),
                       len(pickle.dumps(diff)), diff)
-                _MPI_COMM.Isend((buf, MPI.BYTE), rank, 0)
+                print(buf.size)
+                _MPI_COMM.Send(buf.view(int), rank, 0)
 
         _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
 
@@ -85,7 +88,7 @@ class MpiJacobian:
                 print('FROM ', status.source, ' TO ', my_rank,
                       ' of len ', status.count)
                 buf = np.empty(status.count, 'c')
-                _MPI_COMM.Recv((buf, MPI.BYTE), status.source, 0)
+                _MPI_COMM.Recv(buf.view(int), status.source, 0)
                 try:
                     diff_csc[status.source] = pickle.loads(buf.tostring())
                 except:
@@ -111,7 +114,7 @@ class MpiJacobian:
         num_offdiag_sent = np.zeros((), int)
         for rank in self._to_ranks:
             num_offdiag_sent += 1
-            _MPI_COMM.Isend(np.zeros(0), rank, 0)
+            _MPI_COMM.Send(np.zeros(0), rank, 0)
         _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
 
         # receive the off-diagonals
@@ -138,7 +141,7 @@ class MpiJacobian:
             self._find_to_and_from_ranks()
 
         for rank in self._to_ranks:
-            _MPI_COMM.Isend(self._diff[rank] * du, rank, 0)
+            _MPI_COMM.Send(self._diff[rank] * du, rank, 0)
 
         df_remote = np.empty(df.shape)
         for rank in self._from_ranks:
