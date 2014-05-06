@@ -61,18 +61,17 @@ class MpiJacobian:
         diff_csc[my_rank] = diff_csr[my_rank]
 
         # send the off-diagonal
-        num_offdiag_sent = np.zeros((), int)
-
+        requests = []
         for rank, diff in diff_csr.items():
             if rank != my_rank:
-                num_offdiag_sent += 1
                 buf = np.fromstring(pickle.dumps(diff), 'c')
-                _MPI_COMM.Isend(buf.view(np.int8), rank, 0)
+                requests.append(_MPI_COMM.Isend(buf.view(np.int8), rank, 0))
                 if my_rank == 2 and rank == 1:
                     open('1.pkl', 'wb').write(pickle.dumps(diff))
                 # print('from ', my_rank, ' to ', rank, ' send ', ret)
 
-        _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
+        num_offdiag_sent = np.zeros((), int)
+        _MPI_COMM.Allreduce(np.array(len(requests)), num_offdiag_sent, MPI.SUM)
 
         # receive the off-diagonals
         num_offdiag_received = np.zeros((), int)  # sum across processes
@@ -89,6 +88,9 @@ class MpiJacobian:
 
             _MPI_COMM.Allreduce(np.array(num_local_received),
                                 num_offdiag_received, MPI.SUM)
+
+        for request in requests:
+            request.Wait()
         return diff_csc
 
     def _find_to_and_from_ranks(self):
@@ -101,11 +103,12 @@ class MpiJacobian:
                 del self._diff[rank]
 
         # send the off-diagonal
-        num_offdiag_sent = np.zeros((), int)
+        requests = []
         for rank in self._to_ranks:
-            num_offdiag_sent += 1
-            _MPI_COMM.Send(np.zeros(0), rank, 0)
-        _MPI_COMM.Allreduce(MPI.IN_PLACE, num_offdiag_sent, MPI.SUM)
+            requests.append(_MPI_COMM.Isend(np.zeros(0), rank, 0))
+
+        num_offdiag_sent = np.zeros((), int)
+        _MPI_COMM.Allreduce(np.array(len(requests)), num_offdiag_sent, MPI.SUM)
 
         # receive the off-diagonals
         num_offdiag_received = np.zeros((), int)  # sum across processes
@@ -121,6 +124,9 @@ class MpiJacobian:
             _MPI_COMM.Allreduce(np.array(len(self._from_ranks)),
                                 num_offdiag_received, MPI.SUM)
 
+        for request in requests:
+            request.Wait()
+
     # --------------- matvec and approximate inverse ------------ #
 
     def matvec(self, du):
@@ -130,13 +136,17 @@ class MpiJacobian:
         if not hasattr(self, '_to_ranks'):
             self._find_to_and_from_ranks()
 
+        requests = []
         for rank in self._to_ranks:
-            _MPI_COMM.Isend(self._diff[rank] * du, rank, 0)
+            requests.append(_MPI_COMM.Isend(self._diff[rank] * du, rank, 0))
 
         df_remote = np.empty(df.shape)
         for rank in self._from_ranks:
             _MPI_COMM.Recv(df_remote, rank, 0)
             df += df_remote
+
+        for request in requests:
+            request.Wait()
         return df
 
     def approx_solve(self, df):
@@ -429,7 +439,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
 
 from numpad import *
-N = 100000
+N = 1000
 u = zeros(N)
 f = ones(N)
 dx = 1. / (N * COMM_WORLD.Get_size() + 1)
