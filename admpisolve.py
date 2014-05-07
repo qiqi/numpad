@@ -39,6 +39,8 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.admpi import *
 
+_DTYPE_IND = sp.csr_matrix((1,1)).nonzero()[0].dtype
+
 # ----------- Jacobian in parallel ------------ #
 class MpiJacobian:
     '''
@@ -46,12 +48,14 @@ class MpiJacobian:
     mode='CSC': f_diff_u[rank_i] = df[rank_i] / du[my_rank]
     '''
     def __init__(self, f_diff_u, mode):
+        self._diff = f_diff_u
+        self._find_to_and_from_ranks()
+
         if mode == 'CSR':
-            f_diff_u = self._csr_to_csc(f_diff_u)
+            self._diff = self._csr_to_csc(self._diff)
+            self._to_ranks, self._from_ranks = self._from_ranks, self._to_ranks
         else:
             assert mode == 'CSC'
-
-        self._diff = f_diff_u
 
     @staticmethod
     def _csr_to_csc(diff_csr):
@@ -94,32 +98,42 @@ class MpiJacobian:
         return diff_csc
 
     def _find_to_and_from_ranks(self):
-        self._to_ranks = set(self._diff)
-        self._to_ranks.discard(_MPI_COMM.Get_rank())
-
-        for rank in self._to_ranks:
-            if self._diff[rank] is 0 or self._diff[rank].nnz == 0:
-                self._to_ranks.discard(rank)
+        # find nonzero rows of off-diagonals
+        self._to_ranks = {}
+        for rank in self._diff:
+            if rank == _MPI_COMM.Get_rank():
+                continue
+            if self._diff[rank] is 0:
                 del self._diff[rank]
+                continue
+            i_rows = np.unique(self._diff[rank].nonzero()[0])
+            if i_rows.size == 0:
+                del self._diff[rank]
+                continue
+            self._to_ranks[rank] = i_rows
+            # slice the matrix
+            self._diff[rank] = self._diff[rank][i_rows]
 
-        # send the off-diagonal
+        # send the nonzero rows of off-diagonals
         requests = []
-        for rank in self._to_ranks:
-            requests.append(_MPI_COMM.Isend(np.zeros(0), rank, 0))
+        for rank, i_rows in self._to_ranks.items():
+            requests.append(_MPI_COMM.Isend(i_rows, rank, 0))
 
         num_offdiag_sent = np.zeros((), int)
         _MPI_COMM.Allreduce(np.array(len(requests)), num_offdiag_sent, MPI.SUM)
 
         # receive the off-diagonals
         num_offdiag_received = np.zeros((), int)  # sum across processes
-        self._from_ranks = set()
+        self._from_ranks = {}
 
         while num_offdiag_received < num_offdiag_sent:
             status = MPI.Status()
             while _MPI_COMM.Iprobe(MPI.ANY_SOURCE, 0, status):
-                assert status.count == 0
-                _MPI_COMM.Recv(np.zeros(0), status.source, 0)
-                self._from_ranks.add(status.source)
+                assert status.count % _DTYPE_IND.itemsize == 0
+                i_rows = np.empty(status.count // _DTYPE_IND.itemsize,
+                                  _DTYPE_IND)
+                _MPI_COMM.Recv(i_rows, status.source, 0)
+                self._from_ranks[status.source] = i_rows
 
             _MPI_COMM.Allreduce(np.array(len(self._from_ranks)),
                                 num_offdiag_received, MPI.SUM)
@@ -138,12 +152,13 @@ class MpiJacobian:
 
         requests = []
         for rank in self._to_ranks:
-            requests.append(_MPI_COMM.Isend(self._diff[rank] * du, rank, 0))
+            df_to_remote = self._diff[rank] * du
+            requests.append(_MPI_COMM.Isend(df_to_remote, rank, 0))
 
-        df_remote = np.empty(df.shape)
-        for rank in self._from_ranks:
-            _MPI_COMM.Recv(df_remote, rank, 0)
-            df += df_remote
+        for rank, i_rows in self._from_ranks.items():
+            df_from_remote = np.empty(i_rows.size)
+            _MPI_COMM.Recv(df_from_remote, rank, 0)
+            df[i_rows] += df_from_remote
 
         for request in requests:
             request.Wait()
@@ -437,7 +452,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
 
 from numpad import *
-N = 1000000
+N = 100000
 u = zeros(N)
 f = ones(N)
 dx = 1. / (N * COMM_WORLD.Get_size() + 1)
