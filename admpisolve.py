@@ -161,16 +161,14 @@ class MpiJacobian:
 
 def _norm2(q):
     q = np.asarray(q)
-    nrm2 = get_blas_funcs('nrm2', dtype=q.dtype)
-    nrm2_sq = np.array(nrm2(q)**2)
+    nrm2_sq = np.array((q**2).sum())
     _MPI_COMM.Allreduce(MPI.IN_PLACE, nrm2_sq, MPI.SUM)
     return float(np.sqrt(nrm2_sq))
 
 def _dot(p, q):
     p, q = np.asarray(p), np.asarray(q)
     assert p.dtype == q.dtype
-    dot = get_blas_funcs('dot', dtype=q.dtype)
-    p_dot_q = np.array(dot(p, q))
+    p_dot_q = np.array(np.dot(p, q))
     _MPI_COMM.Allreduce(MPI.IN_PLACE, p_dot_q, MPI.SUM)
     return float(p_dot_q)
 
@@ -439,7 +437,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
 
 from numpad import *
-N = 1000
+N = 1000000
 u = zeros(N)
 f = ones(N)
 dx = 1. / (N * COMM_WORLD.Get_size() + 1)

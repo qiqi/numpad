@@ -270,7 +270,8 @@ class _SimpleSendRecv(unittest.TestCase):
 
         for rank in f_diff_u:
             if rank != nz_rank:
-                self.assertEqual(f_diff_u[rank], 0)
+                if f_diff_u[rank] is not 0 and f_diff_u[rank].nnz > 0:
+                    self.assertAlmostEqual(0, np.abs(f_diff_u[rank].data).max())
 
     def testPoisson1DResidual(self):
         N = 10000
