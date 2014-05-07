@@ -309,6 +309,8 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
         # -- check stopping condition
         r_norm = _norm2(r_outer)
+        if (_MPI_COMM.Get_rank() == 0):
+            print(k_outer, r_norm)
         if r_norm < tol * b_norm or r_norm < tol:
             break
 
@@ -452,7 +454,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
 
 
 from numpad import *
-N = 100000
+N = 10000
 u = zeros(N)
 f = ones(N)
 dx = 1. / (N * COMM_WORLD.Get_size() + 1)
