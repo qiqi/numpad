@@ -172,7 +172,7 @@ class MpiJacobian:
         return self._diff_factorized(df)
 
 
-# ----------- iterative solvers ------------ #
+# ----------- iterative linear solver ------------ #
 
 def _norm2(q):
     q = np.asarray(q)
@@ -310,7 +310,7 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
         # -- check stopping condition
         r_norm = _norm2(r_outer)
         if (_MPI_COMM.Get_rank() == 0):
-            print(k_outer, r_norm)
+            print('        lgmres', k_outer, r_norm)
         if r_norm < tol * b_norm or r_norm < tol:
             break
 
@@ -453,37 +453,82 @@ def _lgmres(A, b, x0=None, tol=1e-5, maxiter=1000, M=None, callback=None,
     return x, 0
 
 
+# ----------- nonlinear solver ------------ #
+def solve_mpi(func, u0, args=(), kargs={},
+          max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
+    pass
+
+
+comm_size = np.sqrt(COMM_WORLD.Get_size()), np.sqrt(COMM_WORLD.Get_size())
+assert np.prod(comm_size) == COMM_WORLD.Get_size()
+
+def i_rank():
+    return COMM_WORLD.Get_rank() // comm_size[1]
+
+def j_rank():
+    return COMM_WORLD.Get_rank() % comm_size[1]
+
+def rank(i, j):
+    return i * comm_size[1] + j
+
 from numpad import *
-N = 10000
-u = zeros(N)
-f = ones(N)
-dx = 1. / (N * COMM_WORLD.Get_size() + 1)
+M, N = 400, 400
+u = zeros((N, M))
+f = ones((N, M))
+dx = 1. / (N * comm_size[1] + 1)
+dy = 1. / (M * comm_size[0] + 1)
 
 def residual(u):
-    u_right = zeros(1)
-    u_left = zeros(1)
+    u_up = zeros(N + 2)
+    u_down = zeros(N + 2)
+    u_right = zeros(M)
+    u_left = zeros(M)
     
-    my_rank = COMM_WORLD.Get_rank()
-    if my_rank > 0:
-        COMM_WORLD.Send(u[:1], my_rank - 1)
-    if my_rank < COMM_WORLD.Get_size() - 1:
-        COMM_WORLD.Recv(u_right, my_rank + 1)
+    if i_rank() > 0:
+        COMM_WORLD.Send(u[0,:], rank(i_rank() - 1, j_rank()))
+    if i_rank() < comm_size[0] - 1:
+        COMM_WORLD.Recv(u_down[1:-1], rank(i_rank() + 1, j_rank()))
     
-    if my_rank < COMM_WORLD.Get_size() - 1:
-        COMM_WORLD.Send(u[-1:], my_rank + 1)
-    if my_rank > 0:
-        COMM_WORLD.Recv(u_left, my_rank - 1)
+    if i_rank() < comm_size[0] - 1:
+        u_send = ascontiguousarray(u[-1,:])
+        COMM_WORLD.Send(u_send, rank(i_rank() + 1, j_rank()))
+    if i_rank() > 0:
+        COMM_WORLD.Recv(u_up[1:-1], rank(i_rank() - 1, j_rank()))
+
+    if j_rank() > 0:
+        COMM_WORLD.Send(u[:,0], rank(i_rank(), j_rank() - 1))
+    if j_rank() < comm_size[1] - 1:
+        COMM_WORLD.Recv(u_right, rank(i_rank(), j_rank() + 1))
     
-    u_ext = hstack([u_left, u, u_right])
-    return (u_ext[2:] + u_ext[:-2] - 2 * u_ext[1:-1]) / dx**2 - f
+    if j_rank() < comm_size[1] - 1:
+        COMM_WORLD.Send(u[:,-1], rank(i_rank(), j_rank() + 1))
+    if j_rank() > 0:
+        COMM_WORLD.Recv(u_left, rank(i_rank(), j_rank() - 1))
+
+    u_ext = hstack([u_left[:,np.newaxis], u, u_right[:,np.newaxis]])
+    u_ext = vstack([u_up[np.newaxis,:], u_ext, u_down[np.newaxis,:]])
+    return (u_ext[1:-1,2:] + u_ext[1:-1,:-2] - 2 * u_ext[1:-1,1:-1]) / dx**2 \
+         + (u_ext[2:,1:-1] + u_ext[:-2,1:-1] - 2 * u_ext[1:-1,1:-1]) / dy**2 \
+         - f
+
 
 r = residual(u)
 r_diff_u = diff_mpi(r, u, 'tangent')
 
 J = MpiJacobian(r_diff_u, 'CSR')
 
-uu, _ = _lgmres(J.matvec, r._value, x0=u._value, tol=1e-5, maxiter=1000,
+uu, _ = _lgmres(J.matvec, r._value.ravel(), x0=u._value.ravel(), tol=1e-5, maxiter=1000,
         M=J.approx_solve, callback=None,
         inner_m=30, outer_k=3, outer_v=None, store_outer_Av=True)
 
-# print(COMM_WORLD.Get_rank(), uu)
+if COMM_WORLD.Get_rank() > 0:
+    COMM_WORLD.Send(adarray(uu), 0)
+else:
+    uAll = zeros(N * M * COMM_WORLD.Get_size())
+    uAll[:N*M] = uu
+    for i in range(1, COMM_WORLD.Get_size()):
+        COMM_WORLD.Recv(uAll[N*M*i:N*M*(i+1)], i)
+    import pylab
+    uAll = uAll.reshape((M * comm_size[0], N * comm_size[1]))
+    pylab.plot(value(uAll))
+    pylab.show()
