@@ -150,7 +150,7 @@ def ns_kec(w, w0, geo, dt):
     # sponge
     Fi_s, Fj_s = sponge_flux(c, w_ext, geo)
     Fi += 0.5 * Fi_s
-    Fi += 0.5 * Fi_s
+    Fj += 0.5 * Fj_s
     # residual
     divF = (Fi[:,1:,:] - Fi[:,:-1,:] + Fj[:,:,1:] - Fj[:,:,:-1]) / geo.area
     return (w - w0) / dt + ravel(divF)
@@ -241,7 +241,7 @@ if geometry == 'nozzle':
     y *= 5 * a[:,np.newaxis]
 
 elif geometry == 'bend':
-    Ni, Nj = 100, 20
+    Ni, Nj = 80, 20
     # Ni, Nj = 200, 40
     theta = linspace(0, pi, Ni/2+1)
     r = 15 + 5 * sin(linspace(-np.pi/2, np.pi/2, Nj+1))
@@ -272,7 +272,7 @@ w0 = ravel(w)
 
 for i in range(100):
     print('i = ', i, 't = ', t)
-    w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+    w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-6, abs_tol=1E-4)
     if w._n_Newton == 1:
         break
     elif w._n_Newton < 5:
@@ -292,7 +292,7 @@ for i in range(100):
 
 print('Final, t = inf')
 dt = np.inf
-w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-6, abs_tol=1E-4)
 figure(figsize=(30,10))
 vis(w, geo)
 savefig('navierstokes-{0}.png'.format(geometry))
