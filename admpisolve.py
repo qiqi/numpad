@@ -472,7 +472,7 @@ def rank(i, j):
     return i * comm_size[1] + j
 
 from numpad import *
-M, N = 400, 400
+M, N = 50, 50
 u = zeros((N, M))
 f = ones((N, M))
 dx = 1. / (N * comm_size[1] + 1)
@@ -485,25 +485,36 @@ def residual(u):
     u_left = zeros(M)
     
     if i_rank() > 0:
-        COMM_WORLD.Send(u[0,:], rank(i_rank() - 1, j_rank()))
+        u_down[1:-1] = u[0,:]
+        COMM_WORLD.Send(u_down[1:-1], rank(i_rank() - 1, j_rank()))
     if i_rank() < comm_size[0] - 1:
         COMM_WORLD.Recv(u_down[1:-1], rank(i_rank() + 1, j_rank()))
+    else:
+        u_down[:] = 0
     
     if i_rank() < comm_size[0] - 1:
-        u_send = ascontiguousarray(u[-1,:])
-        COMM_WORLD.Send(u_send, rank(i_rank() + 1, j_rank()))
+        u_up[1:-1] = u[-1,:]
+        COMM_WORLD.Send(u_up[1:-1], rank(i_rank() + 1, j_rank()))
     if i_rank() > 0:
         COMM_WORLD.Recv(u_up[1:-1], rank(i_rank() - 1, j_rank()))
+    else:
+        u_up[:] = 0
 
     if j_rank() > 0:
-        COMM_WORLD.Send(u[:,0], rank(i_rank(), j_rank() - 1))
+        u_right[:] = u[:,0]
+        COMM_WORLD.Send(u_right, rank(i_rank(), j_rank() - 1))
     if j_rank() < comm_size[1] - 1:
         COMM_WORLD.Recv(u_right, rank(i_rank(), j_rank() + 1))
+    else:
+        u_right[:] = 0
     
     if j_rank() < comm_size[1] - 1:
-        COMM_WORLD.Send(u[:,-1], rank(i_rank(), j_rank() + 1))
+        u_left[:] = u[:,-1]
+        COMM_WORLD.Send(u_left, rank(i_rank(), j_rank() + 1))
     if j_rank() > 0:
         COMM_WORLD.Recv(u_left, rank(i_rank(), j_rank() - 1))
+    else:
+        u_left[:] = 0
 
     u_ext = hstack([u_left[:,np.newaxis], u, u_right[:,np.newaxis]])
     u_ext = vstack([u_up[np.newaxis,:], u_ext, u_down[np.newaxis,:]])
@@ -529,6 +540,8 @@ else:
     for i in range(1, COMM_WORLD.Get_size()):
         COMM_WORLD.Recv(uAll[N*M*i:N*M*(i+1)], i)
     import pylab
-    uAll = uAll.reshape((M * comm_size[0], N * comm_size[1]))
-    pylab.plot(value(uAll))
+    uAll = uAll.reshape((comm_size[0], comm_size[1], M, N))
+    uAll = uAll.transpose([0,2,1,3])
+    uAll = uAll.reshape([comm_size[0] * N, comm_size[0] * M])
+    pylab.plot(value(uAll).T)
     pylab.show()
