@@ -404,7 +404,8 @@ class lssSolver(LSS):
             self.dt *= np.exp(eta)
 
             # evaluate costfunction
-            J=(self.u[:,1]**8).mean(0)
+            TARGET = ???
+            J=((self.u[:,1]**8).mean(0) - TARGET)**2
             J=np.pow(J,1./8)
 
             # update adjoint
