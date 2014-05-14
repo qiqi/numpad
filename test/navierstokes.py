@@ -106,8 +106,13 @@ def sponge_flux(c_ext, w_ext, geo):
     ai = vstack([a[:1,:], (a[1:,:] + a[:-1,:]) / 2, a[-1:,:]])
     aj = hstack([a[:,:1], (a[:,1:] + a[:,:-1]) / 2, a[:,-1:]])
 
+    wxx = (w_ext[:,2:,1:-1] + w_ext[:,:-2,1:-1] - 2 * w_ext[:,1:-1,1:-1]) / 3.
+    wyy = (w_ext[:,1:-1,2:] + w_ext[:,1:-1,:-2] - 2 * w_ext[:,1:-1,1:-1]) / 3.
+    # second order dissipation at boundary, fourth order in the interior
     Fi = -0.5 * ci * ai * (w_ext[:,1:,1:-1] - w_ext[:,:-1,1:-1])
+    Fi[:,1:-1,:] = 0.5 * (ci * ai)[1:-1,:] * (wxx[:,1:,:] - wxx[:,:-1,:])
     Fj = -0.5 * cj * aj * (w_ext[:,1:-1,1:] - w_ext[:,1:-1,:-1])
+    Fj[:,:,1:-1] = 0.5 * (cj * aj)[:,1:-1] * (wyy[:,:,1:] - wyy[:,:,:-1])
     return Fi, Fj
 
 def ns_kec(w, w0, geo, dt):
@@ -144,8 +149,8 @@ def ns_kec(w, w0, geo, dt):
     Fj = - f_j * geo.dxy_j[1] + g_j * geo.dxy_j[0]
     # sponge
     Fi_s, Fj_s = sponge_flux(c, w_ext, geo)
-    Fi[:5,:]  += 0.5 * Fi_s[:5,:]
-    Fi[-5:,:] += 0.5 * Fi_s[-5:,:]
+    Fi += 0.5 * Fi_s
+    Fj += 0.5 * Fj_s
     # residual
     divF = (Fi[:,1:,:] - Fi[:,:-1,:] + Fj[:,:,1:] - Fj[:,:,:-1]) / geo.area
     return (w - w0) / dt + ravel(divF)
@@ -182,9 +187,9 @@ def vis(w, geo):
         return 0.25 * (a[1:,1:] + a[1:,:-1] + a[:-1,1:] + a[:-1,:-1])
 
     import numpy as np
-    rho, u, v, E, p = primative(base(extend(w, geo)))
-    x, y = base(geo.xy)
-    xc, yc = base(geo.xyc)
+    rho, u, v, E, p = primative(value(extend(w, geo)))
+    x, y = value(geo.xy)
+    xc, yc = value(geo.xyc)
     
     c2 = 1.4 * p / rho
     M = sqrt((u**2 + v**2) / c2)
@@ -236,7 +241,7 @@ if geometry == 'nozzle':
     y *= 5 * a[:,np.newaxis]
 
 elif geometry == 'bend':
-    Ni, Nj = 100, 20
+    Ni, Nj = 80, 20
     # Ni, Nj = 200, 40
     theta = linspace(0, pi, Ni/2+1)
     r = 15 + 5 * sin(linspace(-np.pi/2, np.pi/2, Nj+1))
@@ -250,7 +255,7 @@ elif geometry == 'bend':
     
     x, y = vstack([x0, x, x1]), vstack([y0, y, y1])
 
-np.save('geo.npy', base(array([x, y])))
+np.save('geo.npy', value(array([x, y])))
 geo = geo2d([x, y])
 
 t, dt = 0, 1./Nj
@@ -267,7 +272,7 @@ w0 = ravel(w)
 
 for i in range(100):
     print('i = ', i, 't = ', t)
-    w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+    w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-6, abs_tol=1E-4)
     if w._n_Newton == 1:
         break
     elif w._n_Newton < 5:
@@ -287,7 +292,7 @@ for i in range(100):
 
 print('Final, t = inf')
 dt = np.inf
-w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-8, abs_tol=1E-6)
+w = solve(ns_kec, w0, args=(w0, geo, dt), rel_tol=1E-6, abs_tol=1E-4)
 figure(figsize=(30,10))
 vis(w, geo)
 savefig('navierstokes-{0}.png'.format(geometry))

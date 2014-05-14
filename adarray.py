@@ -1,3 +1,4 @@
+import pdb
 import os
 import sys
 import time
@@ -400,6 +401,18 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=False):
     return sum_a * (float(sum_a.size) / a.size)
 
 @append_docstring_from_numpy
+def rollaxis(a, axis, start=0):
+    b = adarray(np.rollaxis(a._base, axis, start))
+
+    data = np.ones(a.size)
+    j = np.ravel(a._ind)
+    i = np.ravel(np.rollaxis(a._ind, axis, start))
+    multiplier = csr_jac(data, i, j)
+
+    b.next_state(multiplier, a, 'rollaxis')
+    return b
+
+@append_docstring_from_numpy
 def dot(a, b):
     dot_axis = a.ndim - 1  # axis to sum over
     if b.ndim > 1:
@@ -608,9 +621,9 @@ class adarray:
 
             if a.shape == b.shape:
                 if hasattr(a, '_base'):
-                    a_x_b.next_state(dia_jac(base(b)), a, '*')
+                    a_x_b.next_state(dia_jac(base(b).ravel()), a, '*')
                 if hasattr(b, '_base'):
-                    a_x_b.next_state(dia_jac(base(a)), b, '*')
+                    a_x_b.next_state(dia_jac(base(a).ravel()), b, '*')
             else:
                 a_multiplier = np.zeros(a_x_b.shape)
                 b_multiplier = np.zeros(a_x_b.shape)
@@ -756,11 +769,9 @@ class adarray:
                 mode = 'adjoint'
 
         if mode == 'tangent':
-            derivative = self._current_state.diff_recurse(u._initial_state)
-            self._current_state.clear_self_diff_u()
+            derivative = diff_tangent(self._current_state, u._initial_state)
         elif mode == 'adjoint':
-            derivative = u._initial_state.adjoint_recurse(self._current_state)
-            u._initial_state.clear_f_diff_self()
+            derivative = diff_adjoint(self._current_state, u._initial_state)
         else:
             raise NotImplementedError()
 
@@ -1136,6 +1147,5 @@ class _Burgers1dTest(unittest.TestCase):
         self.assertTrue(res.diff(u, 'adjoint').shape == (N-1,N-1))
 
 if __name__ == '__main__':
-    _OperationsTest().testExpLog()
     # _DEBUG_mode()
     unittest.main()
