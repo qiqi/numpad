@@ -36,18 +36,18 @@ class csr_matrix:
         if shape is None:
             self.shape = (i.max() + 1, j.max() + 1)
 
-        self._base = sp.csr_matrix((self.data._base, (i, j)), shape=self.shape)
+        self._value = sp.csr_matrix((self.data._value, (i, j)), shape=self.shape)
 
     def __mul__(self, b):
         '''
         Only implemented for a single vector b
         '''
         assert b.ndim == 1
-        A_x_b = adarray(self._base * b._base)
+        A_x_b = adarray(self._value * b._value)
 
-        A_x_b.next_state(self._base, b, '*')
+        A_x_b.next_state(self._value, b, '*')
 
-        data_multiplier = sp.csr_matrix((b._base[self.j],
+        data_multiplier = sp.csr_matrix((b._value[self.j],
                                          (self.i, np.arange(self.data.size))))
         A_x_b.next_state(data_multiplier, self.data, '*')
 
@@ -76,18 +76,18 @@ class bsr_matrix:
         if shape is None:
             self.shape = (i.max() + 1, j.max() + 1)
 
-        self._base = sp.bsr_matrix((self.data._base, (i, j)), shape=self.shape)
+        self._value = sp.bsr_matrix((self.data._value, (i, j)), shape=self.shape)
 
     def __mul__(self, b):
         '''
         Only implemented for a single vector b
         '''
         assert b.ndim == 1
-        A_x_b = adarray(self._base * b._base)
+        A_x_b = adarray(self._value * b._value)
 
-        A_x_b.next_state(self._base, b, '*')
+        A_x_b.next_state(self._value, b, '*')
 
-        data_multiplier = sp.csr_matrix((b._base[self.j],
+        data_multiplier = sp.csr_matrix((b._value[self.j],
                                          (self.i, np.arange(self.data.size))))
         A_x_b.next_state(data_multiplier, self.data, '*')
 
@@ -98,7 +98,7 @@ def spsolve(A, b):
     '''
     AD equivalence of scipy.sparse.linalg.spsolve.
     '''
-    x = adarray(sp.linalg.spsolve(A._base, b._base))
+    x = adarray(sp.linalg.spsolve(A._value, b._value))
     r = A * x - b
     return adsolution(x, r, 1)
 
@@ -153,7 +153,7 @@ if __name__ == '__main__':
         a[:] = 1
         a[i] = 1 + 1E-6
         A = tridiag(a)
-        du = sp.linalg.spsolve(A._base, b._base) - u._base
+        du = sp.linalg.spsolve(A._value, b._value) - u._value
         fd[i] = du.sum() / 1E-6
 
     pylab.plot(fd)

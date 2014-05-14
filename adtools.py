@@ -73,8 +73,8 @@ class interp:
 class SanityCheck(unittest.TestCase):
     def testMatch(self):
         N = 11
-        x0 = random(N); x0.sort()
-        y0 = random(N)
+        x0 = random.rand(N); x0.sort()
+        y0 = random.rand(N)
         for interp_type in ('linear', 'cubic'):
             y = interp(x0, y0, interp_type)
             x = x0.copy()
@@ -92,8 +92,8 @@ class SanityCheck(unittest.TestCase):
 
     def testMatchDeriv(self):
         N = 11
-        x0 = random(N); x0.sort()
-        y0 = random(N)
+        x0 = random.rand(N); x0.sort()
+        y0 = random.rand(N)
         y = interp(x0, y0, 'cubic')
         x = x0.copy()
 
