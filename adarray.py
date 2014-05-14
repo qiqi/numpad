@@ -8,6 +8,8 @@ import weakref
 import numpy as np
 import scipy.sparse as sp
 
+from numpy import newaxis
+
 sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.adstate import *
@@ -121,7 +123,15 @@ def append_docstring_from_numpy(f):
 
 @append_docstring_from_numpy
 def zeros(*args, **kargs):
-    return array(np.zeros(*args, **kargs))
+    a = np.zeros(*args, **kargs)
+    if a.dtype == float:
+        return array(a)
+    else:
+        return a
+
+@append_docstring_from_numpy
+def eye(*args, **kargs):
+    return array(np.eye(*args, **kargs))
 
 @append_docstring_from_numpy
 def ones(*args, **kargs):
@@ -133,7 +143,11 @@ def linspace(*args, **kargs):
 
 @append_docstring_from_numpy
 def arange(*args, **kargs):
-    return array(np.arange(*args, **kargs))
+    base = np.arange(*args, **kargs)
+    if base.dtype == float:
+        return array(base)
+    else:
+        return base
 
 @append_docstring_from_numpy
 def loadtxt(*args, **kargs):
@@ -195,6 +209,10 @@ def exp(x, out=None):
 @append_docstring_from_numpy
 def sqrt(x):
     return x**(0.5)
+
+@append_docstring_from_numpy
+def pow(x, a):
+    return x**a
 
 @append_docstring_from_numpy
 def sin(x, out=None):
@@ -269,7 +287,15 @@ def tanh(x, out=None):
 # ------------------ copy, stack, transpose operations ------------------- #
 
 @append_docstring_from_numpy
-def array(a):
+def asarray(a, dtype):
+    assert dtype == float
+    return a
+
+@append_docstring_from_numpy
+def array(a, dtype=float):
+    if dtype != float:
+        return np.array(a, dtype)
+
     if isinstance(a, adarray):
         return a
     elif isinstance(a, (numbers.Number, np.ndarray)):
@@ -432,6 +458,10 @@ class adarray:
         self._ind = np.arange(self.size).reshape(self.shape)
         self._current_state = InitialState(self)
 
+    @property
+    def dtype(self):
+        return float
+
     # def __array__(self):
     #     return self._base
 
@@ -511,23 +541,37 @@ class adarray:
 
     # ------------------ boolean operations ----------------- #
 
-#     def __eq__(self, a):
-#         return array(self._base == base(a))
-# 
-#     def __ne__(self, a):
-#         return array(self._base != base(a))
-# 
-#     def __gt__(self, a):
-#         return array(self._base > base(a))
-#     
-#     def __ge__(self, a):
-#         return array(self._base >= base(a))
-# 
-#     def __lt__(self, a):
-#         return array(self._base < base(a))
-#     
-#     def __le__(self, a):
-#         return array(self._base <= base(a))
+    def __eq__(self, a):
+        assert self.size == 1
+        return (self._base == base(a))
+
+    def __ne__(self, a):
+        assert self.size == 1
+        return (self._base != base(a))
+
+    def __gt__(self, a):
+        assert self.size == 1
+        return (self._base > base(a))
+    
+    def __ge__(self, a):
+        assert self.size == 1
+        return (self._base >= base(a))
+
+    def __lt__(self, a):
+        assert self.size == 1
+        return (self._base < base(a))
+    
+    def __le__(self, a):
+        assert self.size == 1
+        return (self._base <= base(a))
+
+    def __float__(self):
+        assert self.size == 1
+        return float(self._base)
+
+    def __int__(self):
+        assert self.size == 1
+        return int(self._base)
 # 
 #     def all(self):
 #         return self._base.all()

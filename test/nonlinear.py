@@ -5,10 +5,9 @@ from pylab import *
 from numpy import *
 
 sys.path.append('..')
-sys.path.append('../..')
+
 from lssode import *
-#from numpad import *
-import numpad as np
+from numpad import *
 
 def lorenz(u, rho):
     shp = u.shape
@@ -26,16 +25,16 @@ def vanderpol(u, mu):
     return dudt.reshape(shp)
 
 def costfunction(u,mu):
-	return u[:,1]**8	
+    return u[:,1]**8
 
 CASE = 'vanderpol'
 
 if CASE == 'vanderpol':
     mus = linspace(0.2, 2.0, 10)
-    x0 = random.rand(2)
+    # x0 = random.rand(2)
+    x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
     t = 30 + dt * arange(int(T / dt))
-    t.diff(T)
     
     solver = lssSolver(vanderpol, x0, mus[0], t)
 #    J=solver.evaluate(costfunction)
@@ -45,6 +44,8 @@ if CASE == 'vanderpol':
     
     for mu in mus[1:]:
         print('mu = ', mu)
+        # solver.u[0,0] += 1E-6
+        solver = lssSolver(vanderpol, solver.u, mus[0], solver.t)
         solver.lss(mu)
         u.append(solver.u.copy())
         t.append(solver.t.copy())

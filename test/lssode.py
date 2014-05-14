@@ -68,13 +68,12 @@ Using nonlinear LSS solver:
         # (solver.t, solver.u) is the solution of a LSS problem at s
 """
 import sys
-import numpy as np
-from scipy import sparse
 from scipy.integrate import odeint
-import scipy.sparse.linalg as splinalg
-sys.path.append('..')
-from numpad import *
 
+sys.path.append('../..')
+sys.path.append('..')
+import numpad as np
+from numpad import sparse
 
 __all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
 
@@ -83,13 +82,13 @@ def _diag(a):
     """Construct a block diagonal sparse matrix, A[i,:,:] is the ith block"""
     assert a.ndim == 1
     n = a.size
-    return sparse.csr_matrix((a, np.r_[:n], np.r_[:n+1]))
+    return sparse.csr_matrix((a, np.arange(n), np.arange(n+1)))
 
 def _block_diag(A):
     """Construct a block diagonal sparse matrix, A[i,:,:] is the ith block"""
     assert A.ndim == 3
     n = A.shape[0]
-    return sparse.bsr_matrix((A, np.r_[:n], np.r_[:n+1]))
+    return sparse.bsr_matrix((A, np.arange(n), np.arange(n+1)))
 
 
 EPS = 1E-7
@@ -128,7 +127,7 @@ class ddu(object):
             u[:,i] -= EPS * 2
             fm = self.f(u, s).copy()
             u[:,i] += EPS
-            dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
+            dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS))
         return dfdu
 
 
@@ -158,7 +157,7 @@ class dds(object):
             s[i] -= EPS * 2
             fm = self.f(u, s).copy()
             s[i] += EPS
-            dfds[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
+            dfds[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS))
         return dfds
 
 
@@ -189,12 +188,12 @@ class LSS(object):
             u0 = odeint(f, u0, np.linspace(0, t[0], N0+1))[-1]
 
             # compute a trajectory
-            self.u = odeint(f, u0, t - t[0])
+            self.u = np.array(odeint(f, u0, t - t[0]))
         else:
             assert (u0.shape[0],) == t.shape
             self.u = u0.copy()
 
-        self.dt = t[1:] - t[:-1]
+        self.dt = self.t[1:] - self.t[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
@@ -208,28 +207,42 @@ class LSS(object):
 
         halfJ = 0.5 * self.dfdu(self.uMid, self.s)
         eyeDt = np.eye(m,m) / self.dt[:,np.newaxis,np.newaxis]
-    
-        L = sparse.bsr_matrix((halfJ, np.r_[1:N+1], np.r_[:N+1]) ) \
-          + sparse.bsr_matrix((halfJ, np.r_[:N], np.r_[:N+1]), \
-                              shape=(N*m, (N+1)*m))
-    
-        DDT = sparse.bsr_matrix((eyeDt, np.r_[1:N+1], np.r_[:N+1])) \
-            - sparse.bsr_matrix((eyeDt, np.r_[:N], np.r_[:N+1]), \
-                                shape=(N*m, (N+1)*m))
-    
-        self.B = DDT.tocsr() - L.tocsr()
-        self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
 
-        # the diagonal weights
-        dtFrac = self.dt / (self.t[-1] - self.t[0])
-        wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
-        wb = np.ones(m) * wb[:,np.newaxis]
-        self.wBinv = _diag(np.ravel(1./ wb))
-        we = dtFrac * alpha**2
-        self.wEinv = _diag(1./ we)
+        E = -eyeDt - halfJ
+        f = self.dudt
+        G = +eyeDt - halfJ
+        self.E, self.G = E, G
 
-        return (self.B * self.wBinv * self.B.T) + \
-               (self.E * self.wEinv * self.E.T)
+        def block_ij_to_element_ij(i, j, m):
+            i_addition = np.arange(m)[:,np.newaxis] + np.zeros([m,m], int)
+            j_addition = np.arange(m)[np.newaxis,:] + np.zeros([m,m], int)
+            i = i[:,np.newaxis,np.newaxis] * m + i_addition
+            j = j[:,np.newaxis,np.newaxis] * m + j_addition
+            return i, j
+
+        # construct B * B.T
+        diag_data = (E[:,:,np.newaxis,:] * E[:,np.newaxis,:,:]).sum(3) \
+                  + f[:,:,np.newaxis] * f[:,np.newaxis,:] / alpha**2 \
+                  + (G[:,:,np.newaxis,:] * G[:,np.newaxis,:,:]).sum(3)
+
+        upper_data = (G[:-1,:,np.newaxis,:] * E[1:,np.newaxis,:,:]).sum(3)
+        lower_data = upper_data.transpose([0,2,1])
+
+        diag_i = np.arange(diag_data.shape[0])
+        diag_j = diag_i
+        upper_i = np.arange(diag_data.shape[0] - 1)
+        upper_j = upper_i + 1
+        lower_i, lower_j = upper_j, upper_i
+
+        diag_i, diag_j = block_ij_to_element_ij(diag_i, diag_j, m)
+        upper_i, upper_j = block_ij_to_element_ij(upper_i, upper_j, m)
+        lower_i, lower_j = block_ij_to_element_ij(lower_i, lower_j, m)
+
+        data = np.hstack([np.ravel(diag_data), np.ravel(upper_data), np.ravel(lower_data)])
+        i = np.hstack([np.ravel(diag_i), np.ravel(upper_i), np.ravel(lower_i)])
+        j = np.hstack([np.ravel(diag_j), np.ravel(upper_j), np.ravel(lower_j)])
+
+        return sparse.csr_matrix((data, (i, j)))
 
     def evaluate(self, J):
         """Evaluate a time averaged objective function"""
@@ -256,7 +269,7 @@ class Tangent(LSS):
         b = dfds(self.uMid, self.s)
         assert b.size == Smat.shape[0]
 
-        w = splinalg.spsolve(Smat, np.ravel(b))
+        w = spsolve(Smat, np.ravel(b))
         v = self.wBinv * (self.B.T * w)
 
         self.v = v.reshape(self.u.shape)
@@ -310,7 +323,7 @@ class Adjoint(LSS):
         assert g.size == self.u.size
 
         b = self.E * (self.wEinv * h) + self.B * (self.wBinv * np.ravel(g))
-        wa = splinalg.spsolve(Smat, b)
+        wa = spsolve(Smat, b)
 
         self.wa = wa.reshape(self.uMid.shape)
         self.J, self.dJdu = J, dJdu
@@ -356,6 +369,8 @@ class lssSolver(LSS):
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
+        N, m = self.u.shape[0] - 1, self.u.shape[1]
+
         Smat = self.Schur(self.alpha)
 
         s = np.array(s, float).copy()
@@ -366,31 +381,40 @@ class lssSolver(LSS):
 
         # compute initial matrix and right hand side
         b = self.dudt - self.f(self.uMid, s)
-        norm_b0 = np.linalg.norm(np.ravel(b))
+        norm_b0 = np.sqrt((np.ravel(b)**2).sum())
 
         Smat = self.Schur(self.alpha)
 
-#	u_adj = self.u.copy()
+        u_adj = np.ones(self.u.shape)
 
         for iNewton in range(maxIter):
             # solve
-            w = splinalg.spsolve(Smat, np.ravel(b))
-            v = self.wBinv * (self.B.T * w)
+            w = sparse.spsolve(Smat, np.ravel(b))
+            w = w.reshape([-1, m])
+            GTw = (self.G * w[:,:,np.newaxis]).sum(1)
+            ETw = (self.E * w[:,:,np.newaxis]).sum(1)
+            v = -np.vstack([np.zeros([1,m]), GTw]) \
+                -np.vstack([ETw, np.zeros([1,m])])
 
-            v = v.reshape(self.u.shape)
-            eta = self.wEinv * (self.E.T * w)
+            eta = -(self.dudt * w).sum(1) / self.alpha**2
 
             # update solution and dt
+            u = self.u
             self.u = self.u - v
             self.dt *= np.exp(eta)
 
             # evaluate costfunction
             J=(self.u[:,1]**8).mean(0)
-            J=pow(J,1./8)
-            print J
+            J=np.pow(J,1./8)
 
             # update adjoint
-            #u_adj = u_adj + J.diff(u) # - dot(v.diff(u),u_adj)
+            #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
+            # print((v * u_adj).sum())
+            print((v * u_adj).sum())
+            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
+            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
+                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+            stop
             #v.diff(u)
 
             # compute gradient
@@ -402,7 +426,7 @@ class lssSolver(LSS):
 
             # recompute residual
             b = self.dudt - self.f(self.uMid, s)
-            norm_b = np.linalg.norm(np.ravel(b))
+            norm_b = np.sqrt((np.ravel(b)**2).sum())
             if disp:
                 print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
             if norm_b < atol or norm_b < rtol * norm_b0:
