@@ -127,10 +127,6 @@ def ones(*args, **kargs):
     return array(np.ones(*args, **kargs))
 
 @append_docstring_from_numpy
-def random(*args, **kargs):
-    return array(np.random.random(*args, **kargs))
-
-@append_docstring_from_numpy
 def linspace(*args, **kargs):
     return array(np.linspace(*args, **kargs))
 
@@ -141,6 +137,15 @@ def arange(*args, **kargs):
 @append_docstring_from_numpy
 def loadtxt(*args, **kargs):
     return array(np.loadtxt(*args, **kargs))
+
+class random:
+    @staticmethod
+    def random(*args, **kargs):
+        return array(np.random.random(*args, **kargs))
+    
+    @staticmethod
+    def rand(*args):
+        return random.random(args)
 
 # --------------------- algebraic functions --------------------- #
 
@@ -771,10 +776,10 @@ class adarray:
 class _ManipulationTest(unittest.TestCase):
     def testArray(self):
         N = 10
-        a = random(N)
-        b = random(N)
-        c = random(N)
-        d = random(N)
+        a = random.random(N)
+        b = random.random(N)
+        c = random.random(N)
+        d = random.random(N)
         e = array([[a, b], [c, d]])
 
         I, O = sp.eye(N,N), sp.eye(N,N) * 0
@@ -789,8 +794,8 @@ class _ManipulationTest(unittest.TestCase):
 
     def testDot(self):
         N = 20
-        a = random((10, N))
-        b = random((N, 30))
+        a = random.rand(10, N)
+        b = random.rand(N, 30)
         c = dot(a, b)
 
         c_diff_b = c.diff(b)
@@ -805,8 +810,8 @@ class _ManipulationTest(unittest.TestCase):
 
     def testTranspose(self):
         N = 10
-        a = random(N)
-        b = random(N)
+        a = random.random(N)
+        b = random.random(N)
         c = transpose([a, b])
 
         i, j = np.arange(N) * 2, np.arange(N)
@@ -823,7 +828,7 @@ class _IndexingTest(unittest.TestCase):
     def testIndex(self):
         N = 10
         i = [2,5,-1]
-        a = random(N)
+        a = random.random(N)
         b = a[i]
 
         i = np.arange(N)[i]
@@ -836,8 +841,8 @@ class _IndexingTest(unittest.TestCase):
 class _OperationsTest(unittest.TestCase):
     def testAdd(self):
         N = 1000
-        a = random(N)
-        b = random(N)
+        a = random.random(N)
+        b = random.random(N)
         c = a + b
         self.assertEqual(0, (c.diff(a, 'tangent') - sp.eye(N,N)).nnz)
         self.assertEqual(0, (c.diff(a, 'adjoint') - sp.eye(N,N)).nnz)
@@ -846,8 +851,8 @@ class _OperationsTest(unittest.TestCase):
 
     def testSub(self):
         N = 1000
-        a = random(N)
-        b = random(N)
+        a = random.random(N)
+        b = random.random(N)
         c = a - b
         self.assertEqual(0, (c.diff(a, 'tangent') - sp.eye(N,N)).nnz)
         self.assertEqual(0, (c.diff(a, 'adjoint') - sp.eye(N,N)).nnz)
@@ -856,8 +861,8 @@ class _OperationsTest(unittest.TestCase):
 
     def testMul(self):
         N = 1000
-        a = random(N)
-        b = random(N)
+        a = random.rand(N)
+        b = random.rand(N)
         c = a * b * 5
         self.assertEqual(0, (c.diff(a, 'tangent') - \
                 5 * sp.dia_matrix((b._base, 0), (N,N))).nnz)
@@ -870,8 +875,8 @@ class _OperationsTest(unittest.TestCase):
 
     def testDiv(self):
         N = 10
-        a = random(N)
-        b = random(N)
+        a = random.rand(N)
+        b = random.rand(N)
         c = a / b / 2
         discrepancy = c.diff(a) - sp.dia_matrix((1. / b._base / 2., 0), (N,N))
         if discrepancy.nnz > 0:
@@ -882,7 +887,7 @@ class _OperationsTest(unittest.TestCase):
 
     def testPow(self):
         N = 10
-        a = random(N)
+        a = random.random(N)
         b = 5
         c = a**b
         discrepancy = c.diff(a) - sp.dia_matrix((b * a._base**(b-1), 0), (N,N))
@@ -891,7 +896,7 @@ class _OperationsTest(unittest.TestCase):
 
     def testExpLog(self):
         N = 10
-        a = random(N)
+        a = random.random(N)
         c = exp(a)
         discrepancy = c.diff(a) - sp.dia_matrix((np.exp(a._base), 0), (N,N))
         if discrepancy.nnz > 0:
@@ -903,7 +908,7 @@ class _OperationsTest(unittest.TestCase):
 
     def testSinCos(self):
         N = 10
-        a = random(N)
+        a = random.random(N)
         b = sin(a)
         c = cos(a)
         discrepancy = b.diff(a) - sp.dia_matrix((np.cos(a._base), 0), (N,N))
@@ -915,7 +920,7 @@ class _OperationsTest(unittest.TestCase):
 
     def testSum(self):
         M, N = 4, 10
-        a = random([M, N])
+        a = random.random([M, N])
         b = sum(a, 0)
         c = sum(a, 1)
 
@@ -948,8 +953,8 @@ class _Poisson1dTest(unittest.TestCase):
             res = self.residual(u, f, dx)
         print(time.clock() - t0)
 
-        f = random(N-1)
-        u = random(N-1)
+        f = random.random(N-1)
+        u = random.random(N-1)
 
         t0 = time.clock()
         res = self.residual(u, f, dx)
@@ -1004,8 +1009,8 @@ class _Poisson2dTest(unittest.TestCase):
             res = self.residual(u, f, dx, dy)
         print(time.clock() - t0)
 
-        f = random((N-1, M-1))
-        u = random((N-1, M-1))
+        f = random.random((N-1, M-1))
+        u = random.random((N-1, M-1))
         
         t0 = time.clock()
         res = self.residual(u, f, dx, dy)
@@ -1065,8 +1070,8 @@ class _Poisson3dTest(unittest.TestCase):
             res = self.residual(u, f, dx, dy, dz)
         print(time.clock() - t0)
 
-        f = random((N-1, M-1, L-1))
-        u = random((N-1, M-1, L-1))
+        f = random.random((N-1, M-1, L-1))
+        u = random.random((N-1, M-1, L-1))
         
         t0 = time.clock()
         res = self.residual(u, f, dx, dy, dz)
@@ -1124,7 +1129,7 @@ class _Burgers1dTest(unittest.TestCase):
     def testFirstOrderResidual(self):
         N = 4096
         dx = 1. / N
-        u = random(N-1)
+        u = random.random(N-1)
         f = self.firstOrderFlux(u)
         res = (f[1:] - f[:-1]) / dx
         self.assertTrue(res.diff(u, 'tangent').shape == (N-1,N-1))
