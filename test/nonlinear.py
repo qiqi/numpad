@@ -46,10 +46,10 @@ if CASE == 'vanderpol':
     for mu in mus[1:]:
         print('mu = ', mu)
         solver.u[0,0] += 1E-6
-        solver = lssSolver(vanderpol, solver.u, mus[0], solver.t)
+        solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t))
         solver.lss(mu)
-        u.append(solver.u.copy())
-        t.append(solver.t.copy())
+        u.append(base(solver.u).copy())
+        t.append(base(solver.t).copy())
     
     u, t = array(u), array(t)
     
