@@ -422,6 +422,14 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
     return sum_a
 
 @append_docstring_from_numpy
+def cumsum(a):
+    assert a.ndim == 1
+    cumsum_a = adarray(np.cumsum(base(a)))
+    multiplier = np.tril(np.ones([a.size, a.size]))
+    cumsum_a.next_state(sp.csr_matrix(multiplier), a, 'cumsum')
+    return cumsum_a
+
+@append_docstring_from_numpy
 def mean(a, axis=None, dtype=None, out=None, keepdims=False):
     sum_a = sum(a, axis, dtype, out, keepdims)
     return sum_a * (float(sum_a.size) / a.size)

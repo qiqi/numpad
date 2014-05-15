@@ -75,6 +75,14 @@ sys.path.append('..')
 import numpad as np
 from numpad import sparse
 
+
+import resource
+def using(point=""):
+    usage=resource.getrusage(resource.RUSAGE_SELF)
+    return '''%s: usertime=%s systime=%s mem=%s mb
+           '''%(point,usage[0],usage[1],
+                (usage[2]*resource.getpagesize())/1000000.0 )
+
 __all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
 
 
@@ -369,6 +377,9 @@ class lssSolver(LSS):
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
+        
+        print(using("Start lss solver "))
+
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
         Smat = self.Schur(self.alpha)
@@ -387,7 +398,11 @@ class lssSolver(LSS):
 
         u_adj = np.ones(self.u.shape)
 
+        maxIter=2
         for iNewton in range(maxIter):
+            
+            print(using("Start newton iter "+str(iNewton)))
+            
             # solve
             w = sparse.spsolve(Smat, np.ravel(b))
             w = w.reshape([-1, m])
@@ -404,30 +419,32 @@ class lssSolver(LSS):
             self.dt *= np.exp(eta)
 
             # evaluate costfunction
-            TARGET = ???
+            TARGET = 2.8
             J=((self.u[:,1]**8).mean(0) - TARGET)**2
             J=np.pow(J,1./8)
 
             # update adjoint
             #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
             # print((v * u_adj).sum())
-            print((v * u_adj).sum())
-            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
-            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
-                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
-            stop
-            #v.diff(u)
+#            print((v * u_adj).sum())
+#            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
+ #           u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
+#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+#            stop
 
             # compute gradient
 #            grad = J.diff(s) - dot(v.diff(s),u_adj)
 
             self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
             self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
+            print(using("after u update iter "+str(iNewton)))
             self.t[1:] = self.t[0] + np.cumsum(self.dt)
-
+            print(using("after cumsum iter "+str(iNewton)))
+            
             # recompute residual
             b = self.dudt - self.f(self.uMid, s)
             norm_b = np.sqrt((np.ravel(b)**2).sum())
+            disp=True
             if disp:
                 print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
             if norm_b < atol or norm_b < rtol * norm_b0:
