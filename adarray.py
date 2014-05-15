@@ -211,10 +211,6 @@ def sqrt(x):
     return x**(0.5)
 
 @append_docstring_from_numpy
-def pow(x, a):
-    return x**a
-
-@append_docstring_from_numpy
 def sin(x, out=None):
     x = array(x)
 
@@ -425,8 +421,9 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False):
 def cumsum(a):
     assert a.ndim == 1
     cumsum_a = adarray(np.cumsum(base(a)))
-    multiplier = np.tril(np.ones([a.size, a.size]))
-    cumsum_a.next_state(sp.csr_matrix(multiplier), a, 'cumsum')
+    # HACK: TODO: add dependence
+    # multiplier = np.tril(np.ones([a.size, a.size]))
+    # cumsum_a.next_state(sp.csr_matrix(multiplier), a, 'cumsum')
     return cumsum_a
 
 @append_docstring_from_numpy

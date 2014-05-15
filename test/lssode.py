@@ -74,6 +74,10 @@ sys.path.append('../..')
 sys.path.append('..')
 import numpad as np
 from numpad import sparse
+from numpad.adsparse import spsolve
+# import numpy as np
+# from scipy import sparse
+# from scipy.sparse.linalg import spsolve
 
 
 import resource
@@ -374,11 +378,11 @@ class lssSolver(LSS):
         LSS.__init__(self, f, u0, s, t, dfdu)
         self.alpha = alpha
 
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
+    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
         
-        print(using("Start lss solver "))
+        # print(using("Start lss solver "))
 
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
@@ -398,13 +402,12 @@ class lssSolver(LSS):
 
         u_adj = np.ones(self.u.shape)
 
-        maxIter=2
         for iNewton in range(maxIter):
             
-            print(using("Start newton iter "+str(iNewton)))
+            # print(using("Start newton iter "+str(iNewton)))
             
             # solve
-            w = sparse.spsolve(Smat, np.ravel(b))
+            w = spsolve(Smat, np.ravel(b))
             w = w.reshape([-1, m])
             GTw = (self.G * w[:,:,np.newaxis]).sum(1)
             ETw = (self.E * w[:,:,np.newaxis]).sum(1)
@@ -415,21 +418,20 @@ class lssSolver(LSS):
 
             # update solution and dt
             u = self.u
-            self.u = self.u - v
-            self.dt *= np.exp(eta)
+            self.u = self.u + v
+            self.dt /= np.exp(eta)
 
             # evaluate costfunction
             TARGET = 2.8
             J=((self.u[:,1]**8).mean(0) - TARGET)**2
-            J=np.pow(J,1./8)
+            J=J**(1./8)
 
             # update adjoint
             #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
-            # print((v * u_adj).sum())
-#            print((v * u_adj).sum())
-#            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
- #           u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
-#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+            print((v * u_adj).sum())
+            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
+            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
+                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
 #            stop
 
             # compute gradient
@@ -437,7 +439,7 @@ class lssSolver(LSS):
 
             self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
             self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-            print(using("after u update iter "+str(iNewton)))
+            # print(using("after u update iter "+str(iNewton)))
             self.t[1:] = self.t[0] + np.cumsum(self.dt)
             print(using("after cumsum iter "+str(iNewton)))
             
