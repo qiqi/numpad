@@ -400,12 +400,13 @@ class lssSolver(LSS):
 
         Smat = self.Schur(self.alpha)
 
-        u_adj = np.ones(self.u.shape)
+        u_adj = np.zeros(self.u.shape)
+        eta_adj = np.zeros(b.shape)
 
         for iNewton in range(maxIter):
             
             # print(using("Start newton iter "+str(iNewton)))
-            
+
             # solve
             w = spsolve(Smat, np.ravel(b))
             w = w.reshape([-1, m])
@@ -419,38 +420,52 @@ class lssSolver(LSS):
             # update solution and dt
             u = self.u
             self.u = self.u + v
-            self.dt /= np.exp(eta)
+            self.dt = self.dt/np.exp(eta)
 
             # evaluate costfunction
             TARGET = 2.8
-            J=((self.u[:,1]**8).mean(0) - TARGET)**2
+            J=(self.u[:,1]**8).mean(0)
             J=J**(1./8)
+            J=1./2*(J-TARGET)**2
+            print('J '+str(J))
+
+            #testing derivatives
+            #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
+#            print((v * u_adj).sum())
+#            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
+#            J0 = np.array(J.diff(self.u).todense()).reshape(u_adj.shape)
+#            print(J0[0,1])
 
             # update adjoint
-            #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
-            print((v * u_adj).sum())
-            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
-            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
-                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+#            u_update= np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
+#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+#            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
+#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+
+#            u_adj=u_adj+u_update
+#            print(u_adj[0,0])
+#            norm=np.sqrt((np.ravel(u_update)**2).sum())
+#            print(norm)
 #            stop
+
+            
 
             # compute gradient
 #            grad = J.diff(s) - dot(v.diff(s),u_adj)
 
             self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
             self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-            # print(using("after u update iter "+str(iNewton)))
+            print(using("after u update iter "+str(iNewton)))
             self.t[1:] = self.t[0] + np.cumsum(self.dt)
-            print(using("after cumsum iter "+str(iNewton)))
+#            print(using("after cumsum iter "+str(iNewton)))
             
             # recompute residual
             b = self.dudt - self.f(self.uMid, s)
             norm_b = np.sqrt((np.ravel(b)**2).sum())
-            disp=True
             if disp:
                 print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
-            if norm_b < atol or norm_b < rtol * norm_b0:
-                return self.t, self.u
+#            if norm_b < atol or norm_b < rtol * norm_b0:
+#                return self.t, self.u
 
             # recompute matrix
             Smat = self.Schur(self.alpha)

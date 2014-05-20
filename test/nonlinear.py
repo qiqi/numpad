@@ -30,8 +30,8 @@ def costfunction(u,mu):
 CASE = 'vanderpol'
 
 if CASE == 'vanderpol':
-    mus = linspace(0.2, 2.0, 10)
-#    mus = linspace(0.2,0.2,1)
+#    mus = linspace(0.2, 2.0, 10)
+    mus = linspace(0.2,0.2,2)
     # x0 = random.rand(2)
     x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
@@ -45,22 +45,22 @@ if CASE == 'vanderpol':
     
     for mu in mus[1:]:
         print('mu = ', mu)
-        solver.u[0,0] += 1E-6
+#        solver.u[0,0] += 1E-6
         solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t))
-        solver.lss(mu)
+        solver.lss(mu,disp=True)
         u.append(base(solver.u).copy())
         t.append(base(solver.t).copy())
     
     u, t = array(u), array(t)
     
-    figure(figsize=(5,10))
-    contourf(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)
-    ylim([t.min(1).max(), t.max(1).min()])
-    xlabel(r'$\mu$')
-    ylabel(r'$t$')
-    title(r'$x$')
-    colorbar()
-    show()
+#    figure(figsize=(5,10))
+#    contourf(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)
+#    ylim([base(t).min(1).max(), base(t).max(1).min()])
+#    xlabel(r'$\mu$')
+#    ylabel(r'$t$')
+#    title(r'$x$')
+#    colorbar()
+#    show()
 
 elif CASE == 'lorenz':
     rhos = linspace(28, 33, 21)
