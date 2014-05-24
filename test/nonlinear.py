@@ -4,10 +4,21 @@ import sys
 from pylab import *
 from numpy import *
 
+#set_printoptions(threshold=nan)
+
 sys.path.append('..')
 
 from lssode import *
 from numpad import *
+
+
+import resource
+def using(point=""):
+    usage=resource.getrusage(resource.RUSAGE_SELF)
+    return '''%s: usertime=%s systime=%s mem=%s mb
+           '''%(point,usage[0],usage[1],
+                (usage[2]*resource.getpagesize())/1000000.0 )
+
 
 def lorenz(u, rho):
     shp = u.shape
@@ -37,21 +48,29 @@ if CASE == 'vanderpol':
     dt, T = 0.01, 100
     t = 30 + dt * arange(int(T / dt))
     
-    solver = lssSolver(vanderpol, x0, mus[0], t)
-#    J=solver.evaluate(costfunction)
-#    J=pow(J, 1./8)
-#    print J
+    solver = lssSolver(vanderpol, x0, mus[0], t,dt)
     u, t = [solver.u.copy()], [solver.t.copy()]
-    
+   
     for mu in mus[1:]:
         print('mu = ', mu)
-#        solver.u[0,0] += 1E-6
-        solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t))
-        solver.lss(mu,disp=True)
+        for iNewton in range(8):
+            #solver.u[0,0]+= 1E-6
+            #solver.dt[1]+= 1E-6
+            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt))
+            solver.lss(mu,maxIter=1,disp=True)
+            solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
+            #print(using('newton'+str(iNewton)))
+            #print('J '+str(solver.J))
         u.append(base(solver.u).copy())
         t.append(base(solver.t).copy())
-    
-    u, t = array(u), array(t)
+
+    ufile=open('u.dat','w')
+    ufile.write('mu = '+str(mu)+'\n')
+    ufile.write(str(base(solver.u)))
+    ufile.close()
+
+
+#    u, t = array(u), array(t)
     
 #    figure(figsize=(5,10))
 #    contourf(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)

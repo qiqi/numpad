@@ -75,7 +75,6 @@ sys.path.append('..')
 import numpad as np
 from numpad import sparse
 from numpad.adsparse import spsolve
-# import numpy as np
 # from scipy import sparse
 # from scipy.sparse.linalg import spsolve
 
@@ -179,7 +178,7 @@ class LSS(object):
     During __init__, a trajectory is computed,
     and the matrices used for both tangent and adjoint are built
     """
-    def __init__(self, f, u0, s, t, dfdu=None):
+    def __init__(self, f, u0, s, t,dt, dfdu=None):
         self.f = f
         self.t = np.array(t, float).copy()
         self.s = np.array(s, float).copy()
@@ -204,8 +203,14 @@ class LSS(object):
         else:
             assert (u0.shape[0],) == t.shape
             self.u = u0.copy()
+        
+        
+        if np.array(dt).ndim == 0:
+            self.dt = self.t[1:] - self.t[:-1]
+        else:
+            self.dt=np.array(dt,float).copy() 
 
-        self.dt = self.t[1:] - self.t[:-1]
+        #self.dt = self.t[1:] - self.t[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
@@ -374,9 +379,10 @@ class lssSolver(LSS):
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dfdu=None, alpha=10):
+    def __init__(self, f, u0, s, t, dfdu=None, alpha=10,target=2.8):
         LSS.__init__(self, f, u0, s, t, dfdu)
         self.alpha = alpha
+        self.target=target
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False):
         """Compute a new nonlinear solution at a different s.
@@ -386,26 +392,28 @@ class lssSolver(LSS):
 
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
-        Smat = self.Schur(self.alpha)
-
         s = np.array(s, float).copy()
         if s.ndim == 0:
             s = s[np.newaxis]
         assert s.shape == self.s.shape
         self.s = s
 
-        # compute initial matrix and right hand side
-        b = self.dudt - self.f(self.uMid, s)
-        norm_b0 = np.sqrt((np.ravel(b)**2).sum())
-
-        Smat = self.Schur(self.alpha)
-
-        u_adj = np.zeros(self.u.shape)
-        eta_adj = np.zeros(b.shape)
+        u_adj = np.ones(self.u.shape)
+        dt_adj = np.ones(self.dt.shape)
 
         for iNewton in range(maxIter):
+           
+            # compute matrix and right hand side
+            b = self.dudt - self.f(self.uMid, s)
+            norm_b = np.sqrt((np.ravel(b)**2).sum())
+
+            Smat = self.Schur(self.alpha)           
             
-            # print(using("Start newton iter "+str(iNewton)))
+            #output and stopping criterion
+            if disp:
+                print('iteration, norm_b', iNewton, norm_b)
+#            if norm_b < atol or norm_b < rtol * norm_b0:
+#                return self.t, self.u
 
             # solve
             w = spsolve(Smat, np.ravel(b))
@@ -420,21 +428,33 @@ class lssSolver(LSS):
             # update solution and dt
             u = self.u
             self.u = self.u + v
-            self.dt = self.dt/np.exp(eta)
+            dt=self.dt
+            tmp=np.exp(-eta)
+            self.dt = self.dt*tmp
+            #self.dt = self.dt/np.exp(eta)
 
+            #self.u[0,1]+=1E-6
+            #self.dt[0]+=1E-6
             # evaluate costfunction
-            TARGET = 2.8
             J=(self.u[:,1]**8).mean(0)
             J=J**(1./8)
-            J=1./2*(J-TARGET)**2
-            print('J '+str(J))
+            J=1./2*(J-self.target)**2
+            self.J=J
+            print(J)
 
             #testing derivatives
-            #u_adj = u_adj + array(J.diff(u)) # - dot(v.diff(u),u_adj)
 #            print((v * u_adj).sum())
 #            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
 #            J0 = np.array(J.diff(self.u).todense()).reshape(u_adj.shape)
-#            print(J0[0,1])
+#            print(J0[1,1])
+            #print((v*dt_adj).sum().diff(dt)).reshape(dt_adj.shape)
+            #print((tmp*dt_adj).sum())
+            #print(((tmp*dt_adj).sum().diff(u)).reshape(u_adj.shape))
+            #print((v * u_adj).sum())
+            #print(((v * u_adj).sum().diff(dt)).reshape(dt_adj.shape))
+            #print((tmp*dt_adj).sum())
+            #print(((tmp*dt_adj).sum().diff(dt)).reshape(dt_adj.shape))
+            #print(J.diff(self.dt))
 
             # update adjoint
 #            u_update= np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
@@ -448,27 +468,24 @@ class lssSolver(LSS):
 #            print(norm)
 #            stop
 
-            
 
-            # compute gradient
-#            grad = J.diff(s) - dot(v.diff(s),u_adj)
+#            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
+#            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
+#            self.t[1:] = self.t[0] + np.cumsum(self.dt)
 
-            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
-            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-            print(using("after u update iter "+str(iNewton)))
-            self.t[1:] = self.t[0] + np.cumsum(self.dt)
-#            print(using("after cumsum iter "+str(iNewton)))
+
             
             # recompute residual
-            b = self.dudt - self.f(self.uMid, s)
-            norm_b = np.sqrt((np.ravel(b)**2).sum())
-            if disp:
-                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
+#            b = self.dudt - self.f(self.uMid, s)
+#            norm_b = np.sqrt((np.ravel(b)**2).sum())
+#            if disp:
+#                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
+#                print('iteration, norm_b', iNewton, norm_b)
 #            if norm_b < atol or norm_b < rtol * norm_b0:
 #                return self.t, self.u
 
             # recompute matrix
-            Smat = self.Schur(self.alpha)
+#            Smat = self.Schur(self.alpha)
 
         # did not meet tolerance, error message
-        print('lssSolve: Newton solver did not converge in {0} iterations')
+        #print('lssSolve: Newton solver did not converge in {0} iterations')
