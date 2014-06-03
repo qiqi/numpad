@@ -78,6 +78,16 @@ from numpad.adsparse import spsolve
 # from scipy import sparse
 # from scipy.sparse.linalg import spsolve
 
+def outputVector(vec,size,filename):
+    ufile=open(filename,'w')
+    for i in range(size[0]):
+      for j in range(size[1]):
+        ufile.write('%.40f \n' %(vec[i,j]))
+        #for k in range(size[2]):
+          #ufile.write('%.40f \n' %(vec[i,j,k]))
+    ufile.close()
+
+
 
 import resource
 def using(point=""):
@@ -180,7 +190,7 @@ class LSS(object):
     During __init__, a trajectory is computed,
     and the matrices used for both tangent and adjoint are built
     """
-    def __init__(self, f, u0, s, t,dt, dfdu=None):
+    def __init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu=None):
         self.f = f
         self.t = np.array(t, float).copy()
         self.s = np.array(s, float).copy()
@@ -202,15 +212,22 @@ class LSS(object):
 
             # compute a trajectory
             self.u = np.array(odeint(f, u0, t - t[0]))
+
+            #initialize dt
+            self.dt = self.t[1:] - self.t[:-1]
+            
+            #initialize adjoint 
+            self.u_adj = np.zeros(self.u.shape)
+            self.dt_adj = np.zeros(self.dt.shape)
         else:
             assert (u0.shape[0],) == t.shape
             self.u = u0.copy()
         
-        
-        if np.array(dt).ndim == 0:
-            self.dt = self.t[1:] - self.t[:-1]
-        else:
-            self.dt=np.array(dt,float).copy() 
+            self.dt = np.array(dt,float).copy() 
+            self.u_adj = u_adj.copy()
+            self.dt_adj = dt_adj.copy()
+
+
 
         #self.dt = self.t[1:] - self.t[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
@@ -225,13 +242,13 @@ class LSS(object):
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
         halfJ = 0.5 * self.dfdu(self.uMid, self.s)
+
         eyeDt = np.eye(m,m) / self.dt[:,np.newaxis,np.newaxis]
 
         E = -eyeDt - halfJ
         f = self.dudt
         G = +eyeDt - halfJ
         self.E, self.G = E, G
-
         def block_ij_to_element_ij(i, j, m):
             i_addition = np.arange(m)[:,np.newaxis] + np.zeros([m,m], int)
             j_addition = np.arange(m)[np.newaxis,:] + np.zeros([m,m], int)
@@ -244,9 +261,11 @@ class LSS(object):
                   + f[:,:,np.newaxis] * f[:,np.newaxis,:] / alpha**2 \
                   + (G[:,:,np.newaxis,:] * G[:,np.newaxis,:,:]).sum(3)
 
+
         upper_data = (G[:-1,:,np.newaxis,:] * E[1:,np.newaxis,:,:]).sum(3)
         lower_data = upper_data.transpose([0,2,1])
 
+        
         diag_i = np.arange(diag_data.shape[0])
         diag_j = diag_i
         upper_i = np.arange(diag_data.shape[0] - 1)
@@ -381,17 +400,15 @@ class lssSolver(LSS):
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dfdu=None, alpha=10,target=2.8):
-        LSS.__init__(self, f, u0, s, t, dfdu)
+    def __init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu=None, alpha=10,target=2.8):
+        LSS.__init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu)
         self.alpha = alpha
-        self.target=target
+        self.target = target
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
         
-        # print(using("Start lss solver "))
-
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
         s = np.array(s, float).copy()
@@ -400,8 +417,8 @@ class lssSolver(LSS):
         assert s.shape == self.s.shape
         self.s = s
 
-        u_adj = np.ones(self.u.shape)
-        dt_adj = np.ones(self.dt.shape)
+        #u_adj = np.ones(self.u.shape)
+        #dt_adj = np.ones(self.dt.shape)
 
         for iNewton in range(maxIter):
            
@@ -410,7 +427,7 @@ class lssSolver(LSS):
             norm_b = np.sqrt((np.ravel(b)**2).sum())
 
             Smat = self.Schur(self.alpha)           
-            
+
             #output and stopping criterion
             if disp:
                 print('iteration %d, norm_b %.40f' %(iNewton, norm_b))
@@ -429,12 +446,14 @@ class lssSolver(LSS):
 
             # update solution and dt
             u = self.u
+            G1 = self.u + v
             self.u = self.u + v
             dt=self.dt
-            tmp=np.exp(-eta)
-            self.dt = self.dt*tmp
+            G2=self.dt*np.exp(-eta)
+            self.dt = self.dt*np.exp(-eta)
             #self.dt = self.dt/np.exp(eta)
 
+            
             #self.u[0,1]+=1E-6
             #self.dt[0]+=1E-6
             # evaluate costfunction
@@ -442,9 +461,31 @@ class lssSolver(LSS):
             J=J**(1./8)
             J=1./2*(J-self.target)**2
             self.J=J
-            print(J)
+           
+
+            #update adjoint for u and dt
+            u_adj_update =  np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape) \
+                        + np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape) \
+                        + np.array((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
+            dt_adj_update = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape) \
+                        + np.array((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+
+            norm=np.sqrt( (np.ravel(u_adj_update-self.u_adj)**2).sum() + (np.ravel(dt_adj_update-self.dt_adj)**2).sum())
+            print('Norm adj_update %.40f' %norm)
+
+            self.u_adj = u_adj_update
+            self.dt_adj = dt_adj_update
+
 
             #testing derivatives
+            #print((G1 * self.u_adj).sum())
+            #print(((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
+
+            #print(self.dt_adj.shape)
+            #print(u_adj_update.shape)
+            #print(self.dt.shape)
+            #print((G2*self.dt_adj).sum())
+            #print(((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
 #            print((v * u_adj).sum())
 #            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
 #            J0 = np.array(J.diff(self.u).todense()).reshape(u_adj.shape)

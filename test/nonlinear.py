@@ -4,12 +4,19 @@ import sys
 from pylab import *
 from numpy import *
 
-#set_printoptions(threshold=nan)
+set_printoptions(threshold=nan)
 
 sys.path.append('..')
 
 from lssode import *
 from numpad import *
+
+def outputVector(vec,size,filename):
+    ufile=open(filename,'w')
+    for i in range(size[0]):
+      ufile.write('%.40f %.40f \n' %(vec[i,0],vec[i,1]))
+    ufile.close()
+
 
 
 import resource
@@ -33,6 +40,7 @@ def vanderpol(u, mu):
     dudt = zeros(u.shape, u.dtype)
     dudt[:,0] = u[:,1]
     dudt[:,1] = -u[:,0] + mu * (1 - u[:,0]**2) * u[:,1]
+
     return dudt.reshape(shp)
 
 def costfunction(u,mu):
@@ -47,22 +55,29 @@ if CASE == 'vanderpol':
     x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
     t = 30 + dt * arange(int(T / dt))
+
+    u_adj=array([0.0, 0.0])
+    dt_adj=0.0
     
-    solver = lssSolver(vanderpol, x0, mus[0], t,dt)
+    solver = lssSolver(vanderpol, x0, mus[0], t, dt, u_adj,dt_adj)
     u, t = [solver.u.copy()], [solver.t.copy()]
-   
+
     for mu in mus[1:]:
         print('mu = ', mu)
+
         for iNewton in range(8):
             #solver.u[0,0]+= 1E-6
-            #solver.dt[1]+= 1E-6
-            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt))
+            #solver.dt[0]+= 1E-6
+            
+            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), base(solver.u_adj), base(solver.dt_adj))
             solver.lss(mu,maxIter=1,disp=True)
+
             solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
-            #print(using('newton'+str(iNewton)))
+            print(using('newton'+str(iNewton)))
             #print('J '+str(solver.J))
         u.append(base(solver.u).copy())
         t.append(base(solver.t).copy())
+
 
     ufile=open('u.dat','w')
     ufile.write('mu = '+str(mu)+'\n')
