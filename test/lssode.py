@@ -132,13 +132,15 @@ class ddu(object):
         dfdu = np.zeros( (N, n, m) )
         u = np.asarray(u, type(EPS))
         s = np.asarray(s, type(EPS))
+        u1=u.copy()
         for i in range(m):
-            u[:,i] += EPS
-            fp = self.f(u, s).copy()
-            u[:,i] -= EPS * 2
-            fm = self.f(u, s).copy()
-            u[:,i] += EPS
+            u1[:,i] += EPS
+            fp = self.f(u1, s).copy()
+            u1[:,i] -= EPS * 2
+            fm = self.f(u1, s).copy()
+            u1[:,i] += EPS
             dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS))
+
         return dfdu
 
 
@@ -411,7 +413,7 @@ class lssSolver(LSS):
             
             #output and stopping criterion
             if disp:
-                print('iteration, norm_b', iNewton, norm_b)
+                print('iteration %d, norm_b %.40f' %(iNewton, norm_b))
 #            if norm_b < atol or norm_b < rtol * norm_b0:
 #                return self.t, self.u
 
