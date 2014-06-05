@@ -72,17 +72,25 @@ if CASE == 'vanderpol':
 
     for mu in mus[1:]:
         print('mu = ', mu)
-        mu=mu+1E-6
+
+        #print('perturb mu')
+        #mu=mu+1E-6
+        
         for iNewton in range(8):
             #if iNewton == 5:
             #   print('perturb u')
             #   solver.u[0,0]+= 1E-6
             #   solver.dt[0]+= 1E-6
            
-            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
-                        base(solver.u_adj), base(solver.dt_adj))
+            #solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
+            #            base(solver.u_adj), base(solver.dt_adj))
+            solver = lssSolver(vanderpol, (solver.u), mu, (solver.t), (solver.dt), \
+                        (solver.u_adj), (solver.dt_adj))
             solver.lss(mu,maxIter=1,disp=True, counter=iNewton)
-            
+
+            diff = solver.J.diff(mu)
+            print('Jdiffmu %.40f' %diff)
+
             solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
             print(using('newton'+str(iNewton)))
             #print('J '+str(solver.J))
@@ -90,8 +98,8 @@ if CASE == 'vanderpol':
         t.append(base(solver.t).copy())
 
 
-    #outputVector2d(solver.u,solver.u.shape,'u.dat')
-    #outputVector1d(solver.t,solver.t.shape, 't.dat')
+    outputVector2d(solver.u,solver.u.shape,'u.dat')
+    outputVector1d(solver.t,solver.t.shape, 't.dat')
     #ufile=open('u.dat','w')
     #ufile.write('mu = '+str(mu)+'\n')
     #ufile.write(str(base(solver.u)))
