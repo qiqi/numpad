@@ -78,14 +78,19 @@ from numpad.adsparse import spsolve
 # from scipy import sparse
 # from scipy.sparse.linalg import spsolve
 
-def outputVector(vec,size,filename):
+def outputVector1d(vec,size,filename):
     ufile=open(filename,'w')
     for i in range(size[0]):
-      for j in range(size[1]):
-        ufile.write('%.40f \n' %(vec[i,j]))
-        #for k in range(size[2]):
-          #ufile.write('%.40f \n' %(vec[i,j,k]))
+      ufile.write('%.40f \n' %(vec[i]))
     ufile.close()
+    print('File written: ' +filename)
+
+def outputVector2d(vec,size,filename):
+    ufile=open(filename,'w')
+    for i in range(size[0]):
+      ufile.write('%.40f %.40f \n' %(vec[i,0],vec[i,1]))
+    ufile.close()
+    print('File written: ' +filename)
 
 
 
@@ -217,8 +222,8 @@ class LSS(object):
             self.dt = self.t[1:] - self.t[:-1]
             
             #initialize adjoint 
-            self.u_adj = np.zeros(self.u.shape)
-            self.dt_adj = np.zeros(self.dt.shape)
+            self.u_adj = np.ones(self.u.shape)*u_adj[0]
+            self.dt_adj = np.ones(self.dt.shape)*dt_adj
         else:
             assert (u0.shape[0],) == t.shape
             self.u = u0.copy()
@@ -405,7 +410,7 @@ class lssSolver(LSS):
         self.alpha = alpha
         self.target = target
 
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False):
+    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False, counter=0):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
         
@@ -430,7 +435,7 @@ class lssSolver(LSS):
 
             #output and stopping criterion
             if disp:
-                print('iteration %d, norm_b %.40f' %(iNewton, norm_b))
+                print('\n %i norm_b %.40f' %(counter, norm_b))
 #            if norm_b < atol or norm_b < rtol * norm_b0:
 #                return self.t, self.u
 
@@ -444,14 +449,12 @@ class lssSolver(LSS):
 
             eta = -(self.dudt * w).sum(1) / self.alpha**2
 
-            # update solution and dt
+            # compute primal update
             u = self.u
             G1 = self.u + v
-            self.u = self.u + v
             dt=self.dt
             G2=self.dt*np.exp(-eta)
-            self.dt = self.dt*np.exp(-eta)
-            #self.dt = self.dt/np.exp(eta)
+            self.dt = self.dt/np.exp(eta)
 
             
             #self.u[0,1]+=1E-6
@@ -461,55 +464,61 @@ class lssSolver(LSS):
             J=J**(1./8)
             J=1./2*(J-self.target)**2
             self.J=J
-           
+            print('J %.40f' %J) 
 
             #update adjoint for u and dt
-            u_adj_update =  np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape) \
-                        + np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape) \
-                        + np.array((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
-            dt_adj_update = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape) \
-                        + np.array((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+            J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
+            G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
+            G2_u = np.array((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
+            G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+            G2_dt = np.array((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
 
-            norm=np.sqrt( (np.ravel(u_adj_update-self.u_adj)**2).sum() + (np.ravel(dt_adj_update-self.dt_adj)**2).sum())
-            print('Norm adj_update %.40f' %norm)
+            u_adj_next =  J_u \
+                        + G1_u \
+                        + G2_u
+            dt_adj_next = G1_dt \
+                        + G2_dt
 
-            self.u_adj = u_adj_update
-            self.dt_adj = dt_adj_update
+            norm=(np.ravel(u_adj_next)**2).sum() + (np.ravel(dt_adj_next)**2).sum()
+            print('Norm adj_next %.40f' %norm)
+
+            #normJ= (np.ravel(J_u)**2).sum()
+            #normG1u = (np.ravel(G1_u)**2).sum()
+            #normG2u = (np.ravel(G2_u)**2).sum()
+            #normG1t = (np.ravel(G1_dt)**2).sum()
+            #normG2t = (np.ravel(G2_dt)**2).sum()
+            #print('norm Jdiffu', normJ)
+            #print('norm G1iffu', normG1u)
+            #print('norm G2iffu', normG2u)
+            #print('norm G1ifft', normG1t)
+            #print('norm G2ifft', normG2t)
+
+
+            self.u_adj =  u_adj_next
+            self.dt_adj = dt_adj_next
+            #outputVector2d(self.u_adj,self.u_adj.shape, 'uadj'+str(counter))
+            #outputVector1d(self.dt_adj,self.dt_adj.shape, 'dtadj'+str(counter))
+
+            #update primal
+            self.u = self.u + v
+            self.dt = self.dt*np.exp(-eta)
+
 
 
             #testing derivatives
-            #print((G1 * self.u_adj).sum())
-            #print(((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
+            #print('G1*uadj ', (G1 * self.u_adj).sum())
+            #print('G1*uadj.diffu ', ((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
 
-            #print(self.dt_adj.shape)
-            #print(u_adj_update.shape)
-            #print(self.dt.shape)
-            #print((G2*self.dt_adj).sum())
-            #print(((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
-#            print((v * u_adj).sum())
-#            print(((v * u_adj).sum().diff(u)).reshape(u_adj.shape))
-#            J0 = np.array(J.diff(self.u).todense()).reshape(u_adj.shape)
-#            print(J0[1,1])
-            #print((v*dt_adj).sum().diff(dt)).reshape(dt_adj.shape)
-            #print((tmp*dt_adj).sum())
-            #print(((tmp*dt_adj).sum().diff(u)).reshape(u_adj.shape))
-            #print((v * u_adj).sum())
-            #print(((v * u_adj).sum().diff(dt)).reshape(dt_adj.shape))
-            #print((tmp*dt_adj).sum())
-            #print(((tmp*dt_adj).sum().diff(dt)).reshape(dt_adj.shape))
-            #print(J.diff(self.dt))
+            #print('G2*dtadj ', (G2*self.dt_adj).sum())
+            #print('G2*dtadj.diffu ', ((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape))
 
-            # update adjoint
-#            u_update= np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
-#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
-#            u_adj = u_adj + np.array(J.diff(self.u).todense()).reshape(u_adj.shape) \
-#                          - np.array(((v * u_adj).sum()).diff(u)).reshape(u_adj.shape)
+            #print('G1*uadj ', (G1 * self.u_adj).sum())
+            #print('G1*uadj.diffdt ', ((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
 
-#            u_adj=u_adj+u_update
-#            print(u_adj[0,0])
-#            norm=np.sqrt((np.ravel(u_update)**2).sum())
-#            print(norm)
-#            stop
+            #print('G2*dtadj ', (G2*self.dt_adj).sum())
+            #print('G2*dtadj.diffdt ', ((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
+
+            
 
 
 #            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])

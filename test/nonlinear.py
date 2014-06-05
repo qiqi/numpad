@@ -4,19 +4,27 @@ import sys
 from pylab import *
 from numpy import *
 
-set_printoptions(threshold=nan)
+#set_printoptions(threshold=nan)
 
 sys.path.append('..')
 
 from lssode import *
 from numpad import *
 
-def outputVector(vec,size,filename):
+
+def outputVector1d(vec,size,filename):
+    ufile=open(filename,'w')
+    for i in range(size[0]):
+      ufile.write('%.40f \n' %(vec[i]))
+    ufile.close()
+    print('File written: ' +filename)
+
+def outputVector2d(vec,size,filename):
     ufile=open(filename,'w')
     for i in range(size[0]):
       ufile.write('%.40f %.40f \n' %(vec[i,0],vec[i,1]))
     ufile.close()
-
+    print('File written: ' +filename)
 
 
 import resource
@@ -64,14 +72,17 @@ if CASE == 'vanderpol':
 
     for mu in mus[1:]:
         print('mu = ', mu)
-
+        mu=mu+1E-6
         for iNewton in range(8):
-            #solver.u[0,0]+= 1E-6
-            #solver.dt[0]+= 1E-6
+            #if iNewton == 5:
+            #   print('perturb u')
+            #   solver.u[0,0]+= 1E-6
+            #   solver.dt[0]+= 1E-6
+           
+            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
+                        base(solver.u_adj), base(solver.dt_adj))
+            solver.lss(mu,maxIter=1,disp=True, counter=iNewton)
             
-            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), base(solver.u_adj), base(solver.dt_adj))
-            solver.lss(mu,maxIter=1,disp=True)
-
             solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
             print(using('newton'+str(iNewton)))
             #print('J '+str(solver.J))
@@ -79,14 +90,16 @@ if CASE == 'vanderpol':
         t.append(base(solver.t).copy())
 
 
-    ufile=open('u.dat','w')
-    ufile.write('mu = '+str(mu)+'\n')
-    ufile.write(str(base(solver.u)))
-    ufile.close()
+    #outputVector2d(solver.u,solver.u.shape,'u.dat')
+    #outputVector1d(solver.t,solver.t.shape, 't.dat')
+    #ufile=open('u.dat','w')
+    #ufile.write('mu = '+str(mu)+'\n')
+    #ufile.write(str(base(solver.u)))
+    #ufile.close()
 
 
-#    u, t = array(u), array(t)
-    
+    u, t = array(u), array(t)
+   
 #    figure(figsize=(5,10))
 #    contourf(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)
 #    ylim([base(t).min(1).max(), base(t).max(1).min()])
@@ -94,7 +107,7 @@ if CASE == 'vanderpol':
 #    ylabel(r'$t$')
 #    title(r'$x$')
 #    colorbar()
-#    show()
+#    show(block=True)
 
 elif CASE == 'lorenz':
     rhos = linspace(28, 33, 21)
