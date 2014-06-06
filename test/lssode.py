@@ -409,6 +409,7 @@ class lssSolver(LSS):
         LSS.__init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu)
         self.alpha = alpha
         self.target = target
+        self.redgrad = 0.0
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False, counter=0):
         """Compute a new nonlinear solution at a different s.
@@ -450,12 +451,10 @@ class lssSolver(LSS):
             eta = -(self.dudt * w).sum(1) / self.alpha**2
 
             # compute primal update
-            #u = self.u
-            #G1 = self.u + v
-            #dt=self.dt
-            #G2=self.dt*np.exp(-eta)
-            #self.dt = self.dt/np.exp(eta)
-
+            u = self.u
+            G1 = self.u + v
+            dt=self.dt
+            G2=self.dt*np.exp(-eta)
             
             #self.u[0,1]+=1E-6
             #self.dt[0]+=1E-6
@@ -466,21 +465,21 @@ class lssSolver(LSS):
             self.J=J
             print('J %.40f' %J) 
 
-            #update adjoint for u and dt
-            #J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
-            #G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
-            #G2_u = np.array((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
-            #G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
-            #G2_dt = np.array((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+            #compute adjoint update
+            J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
+            G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
+            G2_u = np.array((G2 * self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
+            G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+            G2_dt = np.array((G2 * self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
 
-            #u_adj_next =  J_u \
-            #            + G1_u \
-            #            + G2_u
-            #dt_adj_next = G1_dt \
-            #            + G2_dt
+            u_adj_next =  J_u \
+                        + G1_u \
+                        + G2_u
+            dt_adj_next = G1_dt \
+                        + G2_dt
 
-            #norm=(np.ravel(u_adj_next)**2).sum() + (np.ravel(dt_adj_next)**2).sum()
-            #print('Norm adj_next %.40f' %norm)
+            norm=(np.ravel(u_adj_next)**2).sum() + (np.ravel(dt_adj_next)**2).sum()
+            print('Norm adj_next %.40f' %norm)
 
             #normJ= (np.ravel(J_u)**2).sum()
             #normG1u = (np.ravel(G1_u)**2).sum()
@@ -494,15 +493,23 @@ class lssSolver(LSS):
             #print('norm G2ifft', normG2t)
 
 
-            #self.u_adj =  u_adj_next
-            #self.dt_adj = dt_adj_next
+            #compute reduced gradient
+            G1_s = np.array((G1 * self.u_adj).sum().diff(s))
+            G2_s = np.array((G2 * self.dt_adj).sum().diff(s))
+            #print('G1_s %.40f' %G1_s)
+            #print('G2_s %.40f' %G2_s)
+
+            self.redgrad = G1_s + G2_s
+
+            #update adjoint
+            self.u_adj =  u_adj_next
+            self.dt_adj = dt_adj_next
             #outputVector2d(self.u_adj,self.u_adj.shape, 'uadj'+str(counter))
             #outputVector1d(self.dt_adj,self.dt_adj.shape, 'dtadj'+str(counter))
 
             #update primal
             self.u = self.u + v
             self.dt = self.dt*np.exp(-eta)
-
 
 
             #testing derivatives

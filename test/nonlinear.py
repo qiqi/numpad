@@ -56,9 +56,13 @@ def costfunction(u,mu):
 
 CASE = 'vanderpol'
 
+#open files for output
+blackboxfile=open('blackbox.dat','w')
+redgradfile=open('piggyback.dat','w')
+
 if CASE == 'vanderpol':
 #    mus = linspace(0.2, 2.0, 10)
-    mus = linspace(0.2,0.2,2)
+    mus = linspace(0.2,0.8,2)
     # x0 = random.rand(2)
     x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
@@ -74,22 +78,30 @@ if CASE == 'vanderpol':
         print('mu = ', mu)
 
         #print('perturb mu')
-        #mu=mu+1E-6
+        mu=mu+1E-6
         
-        for iNewton in range(8):
+        for iNewton in range(20):
             #if iNewton == 5:
             #   print('perturb u')
             #   solver.u[0,0]+= 1E-6
             #   solver.dt[0]+= 1E-6
            
+            #print('PIGGYBACK')
             #solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
             #            base(solver.u_adj), base(solver.dt_adj))
+
+            print('BLACKBOX')
             solver = lssSolver(vanderpol, (solver.u), mu, (solver.t), (solver.dt), \
                         (solver.u_adj), (solver.dt_adj))
+            
             solver.lss(mu,maxIter=1,disp=True, counter=iNewton)
 
-            diff = solver.J.diff(mu)
-            print('Jdiffmu %.40f' %diff)
+            print('reduced gradient %.40f ' %solver.redgrad)
+            redgradfile.write('%.40f \n'%solver.redgrad)
+
+            
+            print('Jdiffmu %.40f ' %solver.J.diff(mu))
+            blackboxfile.write('%.40f \n' %solver.J.diff(mu))
 
             solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
             print(using('newton'+str(iNewton)))
@@ -144,3 +156,6 @@ elif CASE == 'lorenz':
     show()
 
 
+#close output files
+blackboxfile.close()
+redgradfile.close()
