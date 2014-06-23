@@ -78,9 +78,11 @@ from numpad.adsparse import spsolve
 # from scipy import sparse
 # from scipy.sparse.linalg import spsolve
 
+import struct
+
 def outputVector1d(vec,size,filename):
     ufile=open(filename,'w')
-    for i in range(size[0]):
+    for i in range(size):
       ufile.write('%.40f \n' %(vec[i]))
     ufile.close()
     print('File written: ' +filename)
@@ -92,6 +94,14 @@ def outputVector2d(vec,size,filename):
     ufile.close()
     print('File written: ' +filename)
 
+
+def outputBinary(vec,size,filename):
+    binfile=open(filename,'wb')
+    for i in range(size):
+      data=struct.pack('d',vec[i])
+      binfile.write(data)
+    binfile.close()
+    print('File written: ' +filename)
 
 
 import resource
@@ -475,11 +485,19 @@ class lssSolver(LSS):
             u_adj_next =  J_u \
                         + G1_u \
                         + G2_u
-            dt_adj_next = G1_dt \
+            dt_adj_next = + G1_dt \
                         + G2_dt
 
-            norm=(np.ravel(u_adj_next)**2).sum() + (np.ravel(dt_adj_next)**2).sum()
+            norm = (np.ravel(u_adj_next)**2).sum() \
+                 + (np.ravel(dt_adj_next)**2).sum()
+            normdiff = (np.ravel(u_adj_next - self.u_adj)**2).sum() \
+                     + (np.ravel(dt_adj_next - self.dt_adj)**2).sum()
             print('Norm adj_next %.40f' %norm)
+            print('Norm adj_update %.40f' %normdiff)
+            file1=open('adj_update.dat','a')
+            file1.write('%.40f \n' %normdiff)
+            file1.close()
+
 
             #normJ= (np.ravel(J_u)**2).sum()
             #normG1u = (np.ravel(G1_u)**2).sum()
@@ -493,13 +511,81 @@ class lssSolver(LSS):
             #print('norm G2ifft', normG2t)
 
 
+            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise
+            # G2 wrt dt:
+            #for i in range(self.dt.shape[0]):
+            #  unit=np.zeros(self.dt.shape)
+            #  unit[i]=1.0
+            #  G2unit_dt = np.array((G2 * unit).sum().diff(dt)).reshape(self.dt_adj.shape)
+            #  outputBinary(G2unit_dt,G2unit_dt.shape[0],'G2unit_dt'+str(i)+'.bin')
+            #
+
+            ## G2 wrt u:
+            #for i in range(self.dt.shape[0]):
+            #  unit=np.zeros(self.dt.shape)
+            #  unit[i]=1.0
+            #  G2unit_u = np.array((G2 * unit).sum().diff(u)) #.reshape(self.dt_adj.shape)
+            #  G2unit_u=np.transpose(G2unit_u)
+            #  print(G2unit_u.shape)
+            #  outputBinary(G2unit_u,G2unit_u.shape[0],'G2unit_u'+str(i)+'.bin')
+ 
+            #
+            ## G1 wrt u:
+            #for i in range(u.shape[0]):
+            #  unit=np.zeros(u.shape)
+            #  unit[i,0]=1.0
+            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
+            #  G1unit_u=np.transpose(G1unit_u)
+            #  print(G1unit_u.shape)
+            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u1_'+str(i)+'.bin')
+            #  
+            #  unit=np.zeros(u.shape)
+            #  unit[i,1]=1.0
+            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
+            #  G1unit_u=np.transpose(G1unit_u)
+            #  print(G1unit_u.shape)
+            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u2_'+str(i)+'.bin')
+
+
+            ## G1 wrt dt:
+            #for i in range(u.shape[0]):
+            #  unit=np.zeros(u.shape)                                              
+            #  unit[i,0]=1.0
+            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
+            #  #G1unit_u=np.transpose(G1unit_u)
+            #  print(G1unit_dt.shape)
+            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt1_'+str(i)+'.bin')
+            #  
+            #  unit=np.zeros(u.shape)
+            #  unit[i,1]=1.0
+            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
+            #  #G1unit_dt=np.transpose(G1unit_dt)
+            #  print(G1unit_dt.shape)
+            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt2_'+str(i)+'.bin')
+
+            
             #compute reduced gradient
             G1_s = np.array((G1 * self.u_adj).sum().diff(s))
             G2_s = np.array((G2 * self.dt_adj).sum().diff(s))
-            #print('G1_s %.40f' %G1_s)
-            #print('G2_s %.40f' %G2_s)
+            #G1 = np.array((G1.diff(s)).reshape(self.u_adj.shape))
+            #G2 = np.array((G2.diff(s)).reshape(self.dt_adj.shape))
+            #outputVector2d(G1, G1.shape, 'G1diffs'+str(counter)+'.dat')
+            #G2=np.transpose(G2)
+            #outputVector1d(G2, G2.shape[0], 'G2diffs'+str(counter)+'.dat')
 
-            self.redgrad = G1_s + G2_s
+
+            ##print('G1Tuadj ', (G1 * self.u_adj).sum())
+            #print('G1_s %.40f' %G1_s)
+            #G1sfile=open('G1_s.dat', 'a')
+            #G1sfile.write('%.40f\n' %G1_s)
+            #G1sfile.close()
+            ##print('G2Tdtatj ', (G2 * self.dt_adj).sum())
+            #print('G2_s %.40f' %G2_s)
+            #G2sfile=open('G2_s.dat', 'a')
+            #G2sfile.write('%.40f\n' %G2_s)
+            #G2sfile.close()
+
+            self.redgrad = G1_s  + G2_s
 
             #update adjoint
             self.u_adj =  u_adj_next

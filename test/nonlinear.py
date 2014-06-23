@@ -4,7 +4,7 @@ import sys
 from pylab import *
 from numpy import *
 
-#set_printoptions(threshold=nan)
+set_printoptions(threshold=nan)
 
 sys.path.append('..')
 
@@ -59,14 +59,23 @@ CASE = 'vanderpol'
 #open files for output
 blackboxfile=open('blackbox.dat','w')
 redgradfile=open('piggyback.dat','w')
+#G1sfile=open('G1_s.dat','w')
+#G1sfile.close()
+#G2sfile=open('G2_s.dat','w')
+#G2sfile.close()
+file1=open('adj_update.dat','w')
+file1.close()
+
+
 
 if CASE == 'vanderpol':
 #    mus = linspace(0.2, 2.0, 10)
-    mus = linspace(0.2,0.8,2)
+    mus = linspace(0.2,0.2,2)
     # x0 = random.rand(2)
     x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
-    t = 30 + dt * arange(int(T / dt))
+    tmp=int(T / dt)
+    t = 30 + dt * arange(tmp)
 
     u_adj=array([0.0, 0.0])
     dt_adj=0.0
@@ -76,23 +85,22 @@ if CASE == 'vanderpol':
 
     for mu in mus[1:]:
         print('mu = ', mu)
-
-        #print('perturb mu')
-        mu=mu+1E-6
         
-        for iNewton in range(20):
+        #print('perturb mu')
+        #mu=mu+1E-6
+
+        
+        for iNewton in range(8):
             #if iNewton == 5:
             #   print('perturb u')
             #   solver.u[0,0]+= 1E-6
             #   solver.dt[0]+= 1E-6
-           
-            #print('PIGGYBACK')
-            #solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
-            #            base(solver.u_adj), base(solver.dt_adj))
-
-            print('BLACKBOX')
-            solver = lssSolver(vanderpol, (solver.u), mu, (solver.t), (solver.dt), \
-                        (solver.u_adj), (solver.dt_adj))
+            #   print('perturb mu')
+            #   mu=mu+1E-6
+        
+            solver = lssSolver(vanderpol, base(solver.u), mu, base(solver.t),base(solver.dt), \
+                        base(solver.u_adj), base(solver.dt_adj))
+            
             
             solver.lss(mu,maxIter=1,disp=True, counter=iNewton)
 
@@ -100,10 +108,11 @@ if CASE == 'vanderpol':
             redgradfile.write('%.40f \n'%solver.redgrad)
 
             
-            print('Jdiffmu %.40f ' %solver.J.diff(mu))
-            blackboxfile.write('%.40f \n' %solver.J.diff(mu))
+            #print('Jdiffmu %.40f ' %solver.J.diff(mu))
+            #blackboxfile.write('%.40f \n' %solver.J.diff(mu))
 
             solver.t[1:] = solver.t[0] + np.cumsum(base(solver.dt))
+            
             print(using('newton'+str(iNewton)))
             #print('J '+str(solver.J))
         u.append(base(solver.u).copy())
