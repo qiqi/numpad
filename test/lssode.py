@@ -260,6 +260,7 @@ class LSS(object):
 
         eyeDt = np.eye(m,m) / self.dt[:,np.newaxis,np.newaxis]
 
+
         E = -eyeDt - halfJ
         f = self.dudt
         G = +eyeDt - halfJ
@@ -433,8 +434,6 @@ class lssSolver(LSS):
         assert s.shape == self.s.shape
         self.s = s
 
-        #u_adj = np.ones(self.u.shape)
-        #dt_adj = np.ones(self.dt.shape)
 
         for iNewton in range(maxIter):
            
@@ -461,176 +460,169 @@ class lssSolver(LSS):
             eta = -(self.dudt * w).sum(1) / self.alpha**2
 
             # compute primal update
-            u = self.u
             G1 = self.u + v
-            dt=self.dt
-            G2=self.dt*np.exp(-eta)
+            G2 = self.dt*np.exp(-eta)
             
-            #self.u[0,1]+=1E-6
-            #self.dt[0]+=1E-6
-            # evaluate costfunction
-            J=(self.u[:,1]**8).mean(0)
-            J=J**(1./8)
-            J=1./2*(J-self.target)**2
-            self.J=J
-            print('J %.40f' %J) 
-
-            #compute adjoint update
-            J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
-            G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
-            G2_u = np.array((G2 * self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
-            G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
-            G2_dt = np.array((G2 * self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
-
-            u_adj_next =  J_u \
-                        + G1_u \
-                        + G2_u
-            dt_adj_next = + G1_dt \
-                        + G2_dt
-
-            norm = (np.ravel(u_adj_next)**2).sum() \
-                 + (np.ravel(dt_adj_next)**2).sum()
-            normdiff = (np.ravel(u_adj_next - self.u_adj)**2).sum() \
-                     + (np.ravel(dt_adj_next - self.dt_adj)**2).sum()
-            print('Norm adj_next %.40f' %norm)
-            print('Norm adj_update %.40f' %normdiff)
-            file1=open('adj_update.dat','a')
-            file1.write('%.40f \n' %normdiff)
-            file1.close()
-
-
-            #normJ= (np.ravel(J_u)**2).sum()
-            #normG1u = (np.ravel(G1_u)**2).sum()
-            #normG2u = (np.ravel(G2_u)**2).sum()
-            #normG1t = (np.ravel(G1_dt)**2).sum()
-            #normG2t = (np.ravel(G2_dt)**2).sum()
-            #print('norm Jdiffu', normJ)
-            #print('norm G1iffu', normG1u)
-            #print('norm G2iffu', normG2u)
-            #print('norm G1ifft', normG1t)
-            #print('norm G2ifft', normG2t)
-
-
-            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise
-            # G2 wrt dt:
-            #for i in range(self.dt.shape[0]):
-            #  unit=np.zeros(self.dt.shape)
-            #  unit[i]=1.0
-            #  G2unit_dt = np.array((G2 * unit).sum().diff(dt)).reshape(self.dt_adj.shape)
-            #  outputBinary(G2unit_dt,G2unit_dt.shape[0],'G2unit_dt'+str(i)+'.bin')
-            #
-
-            ## G2 wrt u:
-            #for i in range(self.dt.shape[0]):
-            #  unit=np.zeros(self.dt.shape)
-            #  unit[i]=1.0
-            #  G2unit_u = np.array((G2 * unit).sum().diff(u)) #.reshape(self.dt_adj.shape)
-            #  G2unit_u=np.transpose(G2unit_u)
-            #  print(G2unit_u.shape)
-            #  outputBinary(G2unit_u,G2unit_u.shape[0],'G2unit_u'+str(i)+'.bin')
- 
-            #
-            ## G1 wrt u:
-            #for i in range(u.shape[0]):
-            #  unit=np.zeros(u.shape)
-            #  unit[i,0]=1.0
-            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
-            #  G1unit_u=np.transpose(G1unit_u)
-            #  print(G1unit_u.shape)
-            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u1_'+str(i)+'.bin')
-            #  
-            #  unit=np.zeros(u.shape)
-            #  unit[i,1]=1.0
-            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
-            #  G1unit_u=np.transpose(G1unit_u)
-            #  print(G1unit_u.shape)
-            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u2_'+str(i)+'.bin')
-
-
-            ## G1 wrt dt:
-            #for i in range(u.shape[0]):
-            #  unit=np.zeros(u.shape)                                              
-            #  unit[i,0]=1.0
-            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
-            #  #G1unit_u=np.transpose(G1unit_u)
-            #  print(G1unit_dt.shape)
-            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt1_'+str(i)+'.bin')
-            #  
-            #  unit=np.zeros(u.shape)
-            #  unit[i,1]=1.0
-            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
-            #  #G1unit_dt=np.transpose(G1unit_dt)
-            #  print(G1unit_dt.shape)
-            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt2_'+str(i)+'.bin')
-
             
-            #compute reduced gradient
-            G1_s = np.array((G1 * self.u_adj).sum().diff(s))
-            G2_s = np.array((G2 * self.dt_adj).sum().diff(s))
-            #G1 = np.array((G1.diff(s)).reshape(self.u_adj.shape))
-            #G2 = np.array((G2.diff(s)).reshape(self.dt_adj.shape))
-            #outputVector2d(G1, G1.shape, 'G1diffs'+str(counter)+'.dat')
-            #G2=np.transpose(G2)
-            #outputVector1d(G2, G2.shape[0], 'G2diffs'+str(counter)+'.dat')
+            return G1,G2
 
 
-            ##print('G1Tuadj ', (G1 * self.u_adj).sum())
-            #print('G1_s %.40f' %G1_s)
-            #G1sfile=open('G1_s.dat', 'a')
-            #G1sfile.write('%.40f\n' %G1_s)
-            #G1sfile.close()
-            ##print('G2Tdtatj ', (G2 * self.dt_adj).sum())
-            #print('G2_s %.40f' %G2_s)
-            #G2sfile=open('G2_s.dat', 'a')
-            #G2sfile.write('%.40f\n' %G2_s)
-            #G2sfile.close()
-
-            self.redgrad = G1_s  + G2_s
-
-            #update adjoint
-            self.u_adj =  u_adj_next
-            self.dt_adj = dt_adj_next
-            #outputVector2d(self.u_adj,self.u_adj.shape, 'uadj'+str(counter))
-            #outputVector1d(self.dt_adj,self.dt_adj.shape, 'dtadj'+str(counter))
-
-            #update primal
-            self.u = self.u + v
-            self.dt = self.dt*np.exp(-eta)
-
-
-            #testing derivatives
-            #print('G1*uadj ', (G1 * self.u_adj).sum())
-            #print('G1*uadj.diffu ', ((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
-
-            #print('G2*dtadj ', (G2*self.dt_adj).sum())
-            #print('G2*dtadj.diffu ', ((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape))
-
-            #print('G1*uadj ', (G1 * self.u_adj).sum())
-            #print('G1*uadj.diffdt ', ((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
-
-            #print('G2*dtadj ', (G2*self.dt_adj).sum())
-            #print('G2*dtadj.diffdt ', ((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
-
-            
-
-
-#            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
-#            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-#            self.t[1:] = self.t[0] + np.cumsum(self.dt)
-
-
-            
-            # recompute residual
-#            b = self.dudt - self.f(self.uMid, s)
-#            norm_b = np.sqrt((np.ravel(b)**2).sum())
-#            if disp:
-#                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
-#                print('iteration, norm_b', iNewton, norm_b)
-#            if norm_b < atol or norm_b < rtol * norm_b0:
-#                return self.t, self.u
-
-            # recompute matrix
-#            Smat = self.Schur(self.alpha)
-
-        # did not meet tolerance, error message
-        #print('lssSolve: Newton solver did not converge in {0} iterations')
+#            #compute adjoint update
+#            J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
+#            G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
+#            G2_u = np.array((G2 * self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
+#            G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+#            G2_dt = np.array((G2 * self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
+#
+#            u_adj_next =  J_u \
+#                        + G1_u \
+#                        + G2_u
+#            dt_adj_next = + G1_dt \
+#                        + G2_dt
+#
+#            norm = (np.ravel(u_adj_next)**2).sum() \
+#                 + (np.ravel(dt_adj_next)**2).sum()
+#            normdiff = (np.ravel(u_adj_next - self.u_adj)**2).sum() \
+#                     + (np.ravel(dt_adj_next - self.dt_adj)**2).sum()
+#            print('Norm adj_next %.40f' %norm)
+#            print('Norm adj_update %.40f' %normdiff)
+#            file1=open('adj_update.dat','a')
+#            file1.write('%.40f \n' %normdiff)
+#            file1.close()
+#
+#
+#            #normJ= (np.ravel(J_u)**2).sum()
+#            #normG1u = (np.ravel(G1_u)**2).sum()
+#            #normG2u = (np.ravel(G2_u)**2).sum()
+#            #normG1t = (np.ravel(G1_dt)**2).sum()
+#            #normG2t = (np.ravel(G2_dt)**2).sum()
+#            #print('norm Jdiffu', normJ)
+#            #print('norm G1iffu', normG1u)
+#            #print('norm G2iffu', normG2u)
+#            #print('norm G1ifft', normG1t)
+#            #print('norm G2ifft', normG2t)
+#
+#
+#            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise
+#            # G2 wrt dt:
+#            #for i in range(self.dt.shape[0]):
+#            #  unit=np.zeros(self.dt.shape)
+#            #  unit[i]=1.0
+#            #  G2unit_dt = np.array((G2 * unit).sum().diff(dt)).reshape(self.dt_adj.shape)
+#            #  outputBinary(G2unit_dt,G2unit_dt.shape[0],'G2unit_dt'+str(i)+'.bin')
+#            #
+#
+#            ## G2 wrt u:
+#            #for i in range(self.dt.shape[0]):
+#            #  unit=np.zeros(self.dt.shape)
+#            #  unit[i]=1.0
+#            #  G2unit_u = np.array((G2 * unit).sum().diff(u)) #.reshape(self.dt_adj.shape)
+#            #  G2unit_u=np.transpose(G2unit_u)
+#            #  print(G2unit_u.shape)
+#            #  outputBinary(G2unit_u,G2unit_u.shape[0],'G2unit_u'+str(i)+'.bin')
+# 
+#            #
+#            ## G1 wrt u:
+#            #for i in range(u.shape[0]):
+#            #  unit=np.zeros(u.shape)
+#            #  unit[i,0]=1.0
+#            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
+#            #  G1unit_u=np.transpose(G1unit_u)
+#            #  print(G1unit_u.shape)
+#            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u1_'+str(i)+'.bin')
+#            #  
+#            #  unit=np.zeros(u.shape)
+#            #  unit[i,1]=1.0
+#            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
+#            #  G1unit_u=np.transpose(G1unit_u)
+#            #  print(G1unit_u.shape)
+#            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u2_'+str(i)+'.bin')
+#
+#
+#            ## G1 wrt dt:
+#            #for i in range(u.shape[0]):
+#            #  unit=np.zeros(u.shape)                                              
+#            #  unit[i,0]=1.0
+#            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
+#            #  #G1unit_u=np.transpose(G1unit_u)
+#            #  print(G1unit_dt.shape)
+#            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt1_'+str(i)+'.bin')
+#            #  
+#            #  unit=np.zeros(u.shape)
+#            #  unit[i,1]=1.0
+#            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
+#            #  #G1unit_dt=np.transpose(G1unit_dt)
+#            #  print(G1unit_dt.shape)
+#            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt2_'+str(i)+'.bin')
+#
+#            
+#            #compute reduced gradient
+#            G1_s = np.array((G1 * self.u_adj).sum().diff(s))
+#            G2_s = np.array((G2 * self.dt_adj).sum().diff(s))
+#            #G1 = np.array((G1.diff(s)).reshape(self.u_adj.shape))
+#            #G2 = np.array((G2.diff(s)).reshape(self.dt_adj.shape))
+#            #outputVector2d(G1, G1.shape, 'G1diffs'+str(counter)+'.dat')
+#            #G2=np.transpose(G2)
+#            #outputVector1d(G2, G2.shape[0], 'G2diffs'+str(counter)+'.dat')
+#
+#
+#            ##print('G1Tuadj ', (G1 * self.u_adj).sum())
+#            #print('G1_s %.40f' %G1_s)
+#            #G1sfile=open('G1_s.dat', 'a')
+#            #G1sfile.write('%.40f\n' %G1_s)
+#            #G1sfile.close()
+#            ##print('G2Tdtatj ', (G2 * self.dt_adj).sum())
+#            #print('G2_s %.40f' %G2_s)
+#            #G2sfile=open('G2_s.dat', 'a')
+#            #G2sfile.write('%.40f\n' %G2_s)
+#            #G2sfile.close()
+#
+#            self.redgrad = G1_s  + G2_s
+#
+#            #update adjoint
+#            self.u_adj =  u_adj_next
+#            self.dt_adj = dt_adj_next
+#            #outputVector2d(self.u_adj,self.u_adj.shape, 'uadj'+str(counter))
+#            #outputVector1d(self.dt_adj,self.dt_adj.shape, 'dtadj'+str(counter))
+#
+#            #update primal
+#            self.u = self.u + v
+#            self.dt = self.dt*np.exp(-eta)
+#
+#
+#            #testing derivatives
+#            #print('G1*uadj ', (G1 * self.u_adj).sum())
+#            #print('G1*uadj.diffu ', ((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
+#
+#            #print('G2*dtadj ', (G2*self.dt_adj).sum())
+#            #print('G2*dtadj.diffu ', ((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape))
+#
+#            #print('G1*uadj ', (G1 * self.u_adj).sum())
+#            #print('G1*uadj.diffdt ', ((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
+#
+#            #print('G2*dtadj ', (G2*self.dt_adj).sum())
+#            #print('G2*dtadj.diffdt ', ((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
+#
+#            
+#
+#
+##            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
+##            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
+##            self.t[1:] = self.t[0] + np.cumsum(self.dt)
+#
+#
+#            
+#            # recompute residual
+##            b = self.dudt - self.f(self.uMid, s)
+##            norm_b = np.sqrt((np.ravel(b)**2).sum())
+##            if disp:
+##                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
+##                print('iteration, norm_b', iNewton, norm_b)
+##            if norm_b < atol or norm_b < rtol * norm_b0:
+##                return self.t, self.u
+#
+#            # recompute matrix
+##            Smat = self.Schur(self.alpha)
+#
+#        # did not meet tolerance, error message
+#        #print('lssSolve: Newton solver did not converge in {0} iterations')
