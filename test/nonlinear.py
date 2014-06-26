@@ -25,6 +25,15 @@ def outputVector2d(vec,size,filename):
     ufile.close()
     print('File written: ' +filename)
 
+import struct
+def outputBinary(vec,size,filename):
+    binfile=open(filename,'wb')
+    for i in range(size):
+      data=struct.pack('d',vec[i])
+      binfile.write(data)
+    binfile.close()
+    print('File written: ' +filename)
+
 
 import resource
 def using(point=""):
@@ -69,7 +78,7 @@ adjnextfile=open('adj_next.dat','w')
 
 if CASE == 'vanderpol':
 #    mus = linspace(0.2, 2.0, 10)
-    mus = linspace(0.2,1.4,2)
+    mus = linspace(0.2,0.2,2)
     # x0 = random.rand(2)
     x0 = array([0.5, 0.5])
     dt, T = 0.01, 100
@@ -85,17 +94,7 @@ if CASE == 'vanderpol':
     for mu in mus[1:]:
         print('mu = ', mu)
         
-        #print('perturb mu')
-        mu=mu+1E-6
-
-        
-        for iNewton in range(8):
-            #if iNewton == 5:
-            #   print('perturb u')
-            #   solver.u[0,0]+= 1E-6
-            #   solver.dt[0]+= 1E-6
-            #   print('perturb mu')
-            #   mu=mu+1E-6
+        for iNewton in range(10):
         
             ubase = array(base(solver.u))
             dtbase = array(base(solver.dt))
@@ -106,11 +105,7 @@ if CASE == 'vanderpol':
             solver = lssSolver(vanderpol, ubase, mubase, base(solver.t), \
                         dtbase, base(solver.u_adj), base(solver.dt_adj))
             [G1,G2] = solver.lss(mubase,maxIter=1,disp=True, counter=iNewton)
-
-            solver = lssSolver(vanderpol, G1, mubase, base(solver.t), \
-                        G2, base(solver.u_adj), base(solver.dt_adj))
-            [G1,G2] = solver.lss(mubase,maxIter=1,disp=True, counter=iNewton)
-
+            
 
             #evaluate costfunction
             solver.J = costfunction(ubase,solver.target,mubase)
@@ -130,20 +125,21 @@ if CASE == 'vanderpol':
             dt_adj_next = + G1_dt \
                         + G2_dt
 
-            normnext = (ravel(u_adj_next)**2).sum() \
-                 + (ravel(dt_adj_next)**2).sum()
+            #normnext = (ravel(u_adj_next)**2).sum() \
+            #     + (ravel(dt_adj_next)**2).sum()
             normdiff = (ravel(u_adj_next - solver.u_adj)**2).sum() \
                      + (ravel(dt_adj_next - solver.dt_adj)**2).sum()
-            print('Norm adj_next %.40f' %normnext)
+            #print('Norm adj_next %.40f' %normnext)
             print('Norm adj_update %.40f' %normdiff)
             adjupdatefile.write('%.40f \n' %normdiff)
 
-            normJ = (ravel(J_u)**2).sum()
-            normG1u = (ravel(G1_u)**2).sum()
-            normG2u = (ravel(G2_u)**2).sum()
-            normG1t = (ravel(G1_dt)**2).sum()
-            normG2t = (ravel(G2_dt)**2).sum()
-            adjnextfile.write('%.40f %.40f %.40f %.40f %.40f %.40f\n' %(normnext,normJ,normG1u,normG2u,normG1t,normG2t))
+            #normJ = (ravel(J_u)**2).sum()
+            #normG1u = (ravel(G1_u)**2).sum()
+            #normG2u = (ravel(G2_u)**2).sum()
+            #normG1t = (ravel(G1_dt)**2).sum()
+            #normG2t = (ravel(G2_dt)**2).sum()
+            #adjnextfile.write('%.40f %.40f %.40f %.40f %.40f %.40f\n' \
+            #            %(normnext,normJ,normG1u,normG2u,normG1t,normG2t))
     
 
             #compute reduced gradient
@@ -177,10 +173,7 @@ if CASE == 'vanderpol':
 
     outputVector2d(solver.u,solver.u.shape,'u.dat')
     outputVector1d(solver.t,solver.t.shape, 't.dat')
-    #ufile=open('u.dat','w')
-    #ufile.write('mu = '+str(mu)+'\n')
-    #ufile.write(str(base(solver.u)))
-    #ufile.close()
+
 
 
     u, t = array(u), array(t)

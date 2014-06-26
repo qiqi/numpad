@@ -243,7 +243,6 @@ class LSS(object):
             self.dt_adj = dt_adj.copy()
 
 
-
         #self.dt = self.t[1:] - self.t[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
@@ -462,8 +461,9 @@ class lssSolver(LSS):
             # compute primal update
             G1 = self.u + v
             G2 = self.dt*np.exp(-eta)
-            
-            
+ 
+
+     
             return G1,G2
 
 
