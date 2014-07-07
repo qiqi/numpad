@@ -77,6 +77,8 @@ from numpad import sparse
 from numpad.adsparse import spsolve
 # from scipy import sparse
 # from scipy.sparse.linalg import spsolve
+from scipy.interpolate import interp1d
+
 
 import struct
 
@@ -216,6 +218,7 @@ class LSS(object):
         if dfdu is None:
             dfdu = ddu(f)
         self.dfdu = dfdu
+        
 
         u0 = np.array(u0, float)
         if u0.ndim == 1:
@@ -239,6 +242,8 @@ class LSS(object):
             self.u = u0.copy()
         
             self.dt = np.array(dt,float).copy() 
+            #compute dt from tfix
+            #self.dt = self.t[1:] - self.t[:-1]
             self.u_adj = u_adj.copy()
             self.dt_adj = dt_adj.copy()
 
@@ -420,6 +425,7 @@ class lssSolver(LSS):
         self.alpha = alpha
         self.target = target
         self.redgrad = 0.0
+        self.tfix = t.copy()
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False, counter=0):
         """Compute a new nonlinear solution at a different s.
@@ -461,48 +467,42 @@ class lssSolver(LSS):
             # compute primal update
             G1 = self.u + v
             G2 = self.dt*np.exp(-eta)
- 
 
-     
-            return G1,G2
+            
+            # Update time 
+            for l in range(G2.shape[0]):
+                self.t[l+1] = self.t[l] + G2[l]
+            
+            #interpolate G1 at tfix
+            iref=0
+            uinterpol=np.zeros(self.u.shape)
+            for l in range(G1.shape[0]):
+                #find index i s.t. tfix(l) \in [t_{i},t_{i+1}]
+                for i in range(iref,N+1):
+                    if self.t[i+1] >= self.tfix[l]:
+                        iref = i
+                        break
+                assert self.t[i] <= self.tfix[l]
+                assert self.t[i+1] >= self.t[i+1]
+                #interpolate G1(tfix)
+                for j in range(self.u.shape[1]):
+                    m = (G1[i+1,j] - G1[i,j]) / (self.t[i+1] - self.t[i])
+                    uinterpol[l,j] = G1[i,j] + m * (self.tfix[l] - self.t[i])
+
+            outputVector2d(uinterpol,uinterpol.shape, 'uinterpol_new'+str(counter)+'.dat')
+
+            
+            ##interpolate G1 at tfix
+            #uinterpol=np.zeros(self.u.shape)
+            #for i in range(self.u.shape[1]):
+            #    f1 = interp1d(self.t[:],G1[:,i])
+            #    uinterpol[:,i]=np.array(f1(self.tfix))
+            #
+            #outputVector2d(uinterpol,uinterpol.shape, 'uinterpol'+str(counter)+'.dat')
+            
+            return uinterpol
 
 
-#            #compute adjoint update
-#            J_u = np.array(J.diff(self.u).todense()).reshape(self.u_adj.shape)
-#            G1_u = np.array((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape)
-#            G2_u = np.array((G2 * self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape)
-#            G1_dt = np.array((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
-#            G2_dt = np.array((G2 * self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape)
-#
-#            u_adj_next =  J_u \
-#                        + G1_u \
-#                        + G2_u
-#            dt_adj_next = + G1_dt \
-#                        + G2_dt
-#
-#            norm = (np.ravel(u_adj_next)**2).sum() \
-#                 + (np.ravel(dt_adj_next)**2).sum()
-#            normdiff = (np.ravel(u_adj_next - self.u_adj)**2).sum() \
-#                     + (np.ravel(dt_adj_next - self.dt_adj)**2).sum()
-#            print('Norm adj_next %.40f' %norm)
-#            print('Norm adj_update %.40f' %normdiff)
-#            file1=open('adj_update.dat','a')
-#            file1.write('%.40f \n' %normdiff)
-#            file1.close()
-#
-#
-#            #normJ= (np.ravel(J_u)**2).sum()
-#            #normG1u = (np.ravel(G1_u)**2).sum()
-#            #normG2u = (np.ravel(G2_u)**2).sum()
-#            #normG1t = (np.ravel(G1_dt)**2).sum()
-#            #normG2t = (np.ravel(G2_dt)**2).sum()
-#            #print('norm Jdiffu', normJ)
-#            #print('norm G1iffu', normG1u)
-#            #print('norm G2iffu', normG2u)
-#            #print('norm G1ifft', normG1t)
-#            #print('norm G2ifft', normG2t)
-#
-#
 #            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise
 #            # G2 wrt dt:
 #            #for i in range(self.dt.shape[0]):
@@ -554,40 +554,6 @@ class lssSolver(LSS):
 #            #  #G1unit_dt=np.transpose(G1unit_dt)
 #            #  print(G1unit_dt.shape)
 #            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt2_'+str(i)+'.bin')
-#
-#            
-#            #compute reduced gradient
-#            G1_s = np.array((G1 * self.u_adj).sum().diff(s))
-#            G2_s = np.array((G2 * self.dt_adj).sum().diff(s))
-#            #G1 = np.array((G1.diff(s)).reshape(self.u_adj.shape))
-#            #G2 = np.array((G2.diff(s)).reshape(self.dt_adj.shape))
-#            #outputVector2d(G1, G1.shape, 'G1diffs'+str(counter)+'.dat')
-#            #G2=np.transpose(G2)
-#            #outputVector1d(G2, G2.shape[0], 'G2diffs'+str(counter)+'.dat')
-#
-#
-#            ##print('G1Tuadj ', (G1 * self.u_adj).sum())
-#            #print('G1_s %.40f' %G1_s)
-#            #G1sfile=open('G1_s.dat', 'a')
-#            #G1sfile.write('%.40f\n' %G1_s)
-#            #G1sfile.close()
-#            ##print('G2Tdtatj ', (G2 * self.dt_adj).sum())
-#            #print('G2_s %.40f' %G2_s)
-#            #G2sfile=open('G2_s.dat', 'a')
-#            #G2sfile.write('%.40f\n' %G2_s)
-#            #G2sfile.close()
-#
-#            self.redgrad = G1_s  + G2_s
-#
-#            #update adjoint
-#            self.u_adj =  u_adj_next
-#            self.dt_adj = dt_adj_next
-#            #outputVector2d(self.u_adj,self.u_adj.shape, 'uadj'+str(counter))
-#            #outputVector1d(self.dt_adj,self.dt_adj.shape, 'dtadj'+str(counter))
-#
-#            #update primal
-#            self.u = self.u + v
-#            self.dt = self.dt*np.exp(-eta)
 #
 #
 #            #testing derivatives
