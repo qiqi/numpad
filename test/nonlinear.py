@@ -79,9 +79,9 @@ CASE = 'vanderpol'
 
 #open files for output
 blackboxfile=open('blackbox.dat','w')
-redgradfile=open('piggyback.dat','w')
+redgradfile=open('redgrad.dat','w')
 adjupdatefile=open('adj_update.dat','w')
-adjnextfile=open('adj_next.dat','w')
+#adjnextfile=open('adj_next.dat','w')
 
 
 
@@ -101,26 +101,22 @@ if CASE == 'vanderpol':
     dt_adj=0.0
     
 
-    solver = lssSolver(vanderpol, x0, mus[0], t, dt, u_adj,dt_adj)
+    solver = lssSolver(vanderpol, x0, mus[0], t, u_adj)
     u, t = [solver.u.copy()], [solver.t.copy()]
 
 
     for mu in mus[1:]:
-        print('mu = ', mu)
         
-        for iNewton in range(10):
+        #mu+=1e-6
 
-            #if iNewton==2:
-            #  outputVector2d(solver.u,solver.u.shape,'u'+str(iNewton)+'.dat')
-        
+        for iNewton in range(8):
+
             ubase = array(base(solver.u))
-            dtbase = array(base(solver.dt))
             mubase = array(base(mu))
-            
-
+ 
             #compute primal update
             solver = lssSolver(vanderpol, ubase, mubase, base(tfix), \
-                        dtbase, base(solver.u_adj), base(solver.dt_adj))
+                        base(solver.u_adj))
             G1 = solver.lss(mubase, maxIter=1,disp=True, counter=iNewton)
 
 
@@ -129,51 +125,32 @@ if CASE == 'vanderpol':
             print('J %.40f' %solver.J) 
 
 
-            ##compute adjoint update
-            #J_u = array((solver.J).diff(ubase).todense()).reshape(solver.u_adj.shape)
-            #G1_u = array((G1 * solver.u_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
-            #G2_u = array((G2 * solver.dt_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
-            #G1_dt = array((G1 * solver.u_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
-            #G2_dt = array((G2 * solver.dt_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
-            #
-            #u_adj_next =  J_u \
-            #            + G1_u 
-            #            + G2_u
-            #dt_adj_next = + G1_dt \
-            #            + G2_dt
+            #compute adjoint update
+            J_u = array((solver.J).diff(ubase).todense()).reshape(solver.u_adj.shape)
+            print('J_u...')
+            G1_u = array((G1 * solver.u_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
+            print('G1_u...')
 
-            ##normnext = (ravel(u_adj_next)**2).sum() \
-            ##     + (ravel(dt_adj_next)**2).sum()
-            #normdiff = (ravel(u_adj_next - solver.u_adj)**2).sum() 
-            #         + (ravel(dt_adj_next - solver.dt_adj)**2).sum()
-            ##print('Norm adj_next %.40f' %normnext)
-            #print('Norm adj_update %.40f' %normdiff)
-            #adjupdatefile.write('%.40f \n' %normdiff)
+            u_adj_next =  J_u + G1_u 
+            
+            normdiff = (ravel(u_adj_next - solver.u_adj)**2).sum() 
+            print('Norm adj_update %.40f' %normdiff)
+            adjupdatefile.write('%.40f \n' %normdiff)
 
-    
 
             #compute reduced gradient
-            #G1_s = array((G1 * solver.u_adj).sum().diff(mubase))
-            #G2_s = array((G2 * solver.dt_adj).sum().diff(mubase))
-            #solver.redgrad = G1_s # + G2_s 
-            #print('reduced gradient %.40f ' %solver.redgrad)
-            #redgradfile.write('%.40f  %.40f  %.40f\n'%(solver.redgrad,G1_s,G2_s))
+            G1_s = array((G1 * solver.u_adj).sum().diff(mubase))
+            print('reduced gradient %.40f ' %G1_s)
+            redgradfile.write('%.40f \n'%G1_s)
 
             
-            #update primal
+            #update primal and adjoint
             solver.u = G1
-            #solver.dt = G2
+            solver.u_adj =  u_adj_next
 
-
-            ##update adjoint
-            #solver.u_adj =  u_adj_next
-            #solver.dt_adj = dt_adj_next
-
-
-            #print('Jdiffmu %.40f ' %solver.J.diff(mu))
-            #blackboxfile.write('%.40f \n' %solver.J.diff(mu))
 
             print(using('newton'+str(iNewton)))
+            #outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj'+str(iNewton)+'.dat')
         
         
         u.append(base(solver.u).copy())
@@ -182,6 +159,7 @@ if CASE == 'vanderpol':
 
     outputVector2d(solver.u,solver.u.shape,'u.dat')
     outputVector1d(solver.tfix,solver.tfix.shape, 'tfix.dat')
+    outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj.dat')
 
     u, t = array(u), array(t)
    
@@ -225,5 +203,5 @@ elif CASE == 'lorenz':
 blackboxfile.close()
 redgradfile.close()
 adjupdatefile.close()
-adjnextfile.close()
+#adjnextfile.close()
 

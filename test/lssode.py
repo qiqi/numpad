@@ -113,6 +113,10 @@ def using(point=""):
            '''%(point,usage[0],usage[1],
                 (usage[2]*resource.getpagesize())/1000000.0 )
 
+
+from time import *
+
+
 __all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
 
 
@@ -207,9 +211,10 @@ class LSS(object):
     During __init__, a trajectory is computed,
     and the matrices used for both tangent and adjoint are built
     """
-    def __init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu=None):
+    def __init__(self, f, u0, s, t, u_adj, dfdu=None):
         self.f = f
-        self.t = np.array(t, float).copy()
+        self.tfix = np.array(t,float).copy()
+        self.t = self.tfix.copy()
         self.s = np.array(s, float).copy()
 
         if self.s.ndim == 0:
@@ -230,25 +235,19 @@ class LSS(object):
 
             # compute a trajectory
             self.u = np.array(odeint(f, u0, t - t[0]))
-
-            #initialize dt
-            self.dt = self.t[1:] - self.t[:-1]
             
             #initialize adjoint 
             self.u_adj = np.ones(self.u.shape)*u_adj[0]
-            self.dt_adj = np.ones(self.dt.shape)*dt_adj
+            #self.dt_adj = np.ones(self.dt.shape)*dt_adj
         else:
             assert (u0.shape[0],) == t.shape
             self.u = u0.copy()
         
-            self.dt = np.array(dt,float).copy() 
-            #compute dt from tfix
-            #self.dt = self.t[1:] - self.t[:-1]
             self.u_adj = u_adj.copy()
-            self.dt_adj = dt_adj.copy()
+            #self.dt_adj = dt_adj.copy()
 
 
-        #self.dt = self.t[1:] - self.t[:-1]
+        self.dt = self.tfix[1:] - self.tfix[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
@@ -420,12 +419,11 @@ class lssSolver(LSS):
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu=None, alpha=10,target=2.8):
-        LSS.__init__(self, f, u0, s, t, dt, u_adj, dt_adj, dfdu)
+    def __init__(self, f, u0, s, t, u_adj, dfdu=None, alpha=10,target=2.8):
+        LSS.__init__(self, f, u0, s, t, u_adj, dfdu)
         self.alpha = alpha
         self.target = target
         self.redgrad = 0.0
-        self.tfix = t.copy()
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-8, disp=False, counter=0):
         """Compute a new nonlinear solution at a different s.
@@ -464,34 +462,36 @@ class lssSolver(LSS):
 
             eta = -(self.dudt * w).sum(1) / self.alpha**2
 
-            # compute primal update
+            # compute primal update and time dilation
             G1 = self.u + v
             G2 = self.dt*np.exp(-eta)
 
-            
-            # Update time 
-            for l in range(G2.shape[0]):
-                self.t[l+1] = self.t[l] + G2[l]
-            
-            #interpolate G1 at tfix
-            iref=0
+            #t1=clock()
+            #interpolation
+            print('interpolating...')
             uinterpol=np.zeros(self.u.shape)
+            i=0
+            tmp = self.tfix[0]
             for l in range(G1.shape[0]):
-                #find index i s.t. tfix(l) \in [t_{i},t_{i+1}]
-                for i in range(iref,N+1):
-                    if self.t[i+1] >= self.tfix[l]:
-                        iref = i
-                        break
-                assert self.t[i] <= self.tfix[l]
-                assert self.t[i+1] >= self.t[i+1]
-                #interpolate G1(tfix)
-                for j in range(self.u.shape[1]):
-                    m = (G1[i+1,j] - G1[i,j]) / (self.t[i+1] - self.t[i])
-                    uinterpol[l,j] = G1[i,j] + m * (self.tfix[l] - self.t[i])
+                  #find index
+                  while tmp < self.tfix[l]:
+                      tmp += G2[i]
+                      i+=1
+                  assert tmp >= self.tfix[l]
+                  assert tmp-G2[i-1] <= self.tfix[l]
+                  #interpolate G1(tfix)
+                  for j in range(self.u.shape[1]):
+                     m = (G1[i,j] - G1[i-1,j]) / G2[i-1]
+                     uinterpol[l,j] = G1[i-1,j] + m * (self.tfix[l] - (tmp-G2[i-1]))
+            #t2=clock()
+            #print('Timediff %.16f' %(t2-t1))
+                  
+            #outputVector2d(uinterpol,uinterpol.shape, 'uinterpol_new'+str(counter)+'.dat')
 
-            outputVector2d(uinterpol,uinterpol.shape, 'uinterpol_new'+str(counter)+'.dat')
 
-            
+            return uinterpol
+
+
             ##interpolate G1 at tfix
             #uinterpol=np.zeros(self.u.shape)
             #for i in range(self.u.shape[1]):
@@ -499,96 +499,5 @@ class lssSolver(LSS):
             #    uinterpol[:,i]=np.array(f1(self.tfix))
             #
             #outputVector2d(uinterpol,uinterpol.shape, 'uinterpol'+str(counter)+'.dat')
-            
-            return uinterpol
 
 
-#            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise
-#            # G2 wrt dt:
-#            #for i in range(self.dt.shape[0]):
-#            #  unit=np.zeros(self.dt.shape)
-#            #  unit[i]=1.0
-#            #  G2unit_dt = np.array((G2 * unit).sum().diff(dt)).reshape(self.dt_adj.shape)
-#            #  outputBinary(G2unit_dt,G2unit_dt.shape[0],'G2unit_dt'+str(i)+'.bin')
-#            #
-#
-#            ## G2 wrt u:
-#            #for i in range(self.dt.shape[0]):
-#            #  unit=np.zeros(self.dt.shape)
-#            #  unit[i]=1.0
-#            #  G2unit_u = np.array((G2 * unit).sum().diff(u)) #.reshape(self.dt_adj.shape)
-#            #  G2unit_u=np.transpose(G2unit_u)
-#            #  print(G2unit_u.shape)
-#            #  outputBinary(G2unit_u,G2unit_u.shape[0],'G2unit_u'+str(i)+'.bin')
-# 
-#            #
-#            ## G1 wrt u:
-#            #for i in range(u.shape[0]):
-#            #  unit=np.zeros(u.shape)
-#            #  unit[i,0]=1.0
-#            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
-#            #  G1unit_u=np.transpose(G1unit_u)
-#            #  print(G1unit_u.shape)
-#            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u1_'+str(i)+'.bin')
-#            #  
-#            #  unit=np.zeros(u.shape)
-#            #  unit[i,1]=1.0
-#            #  G1unit_u = np.array((G1 * unit).sum().diff(u)) #.reshape(u.shape)
-#            #  G1unit_u=np.transpose(G1unit_u)
-#            #  print(G1unit_u.shape)
-#            #  outputBinary(G1unit_u,G1unit_u.shape[0],'G1unit_u2_'+str(i)+'.bin')
-#
-#
-#            ## G1 wrt dt:
-#            #for i in range(u.shape[0]):
-#            #  unit=np.zeros(u.shape)                                              
-#            #  unit[i,0]=1.0
-#            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
-#            #  #G1unit_u=np.transpose(G1unit_u)
-#            #  print(G1unit_dt.shape)
-#            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt1_'+str(i)+'.bin')
-#            #  
-#            #  unit=np.zeros(u.shape)
-#            #  unit[i,1]=1.0
-#            #  G1unit_dt = np.array((G1 * unit).sum().diff(dt)).reshape(self.dt.shape)
-#            #  #G1unit_dt=np.transpose(G1unit_dt)
-#            #  print(G1unit_dt.shape)
-#            #  outputBinary(G1unit_dt,G1unit_dt.shape[0],'G1unit_dt2_'+str(i)+'.bin')
-#
-#
-#            #testing derivatives
-#            #print('G1*uadj ', (G1 * self.u_adj).sum())
-#            #print('G1*uadj.diffu ', ((G1 * self.u_adj).sum().diff(u)).reshape(self.u_adj.shape))
-#
-#            #print('G2*dtadj ', (G2*self.dt_adj).sum())
-#            #print('G2*dtadj.diffu ', ((G2*self.dt_adj).sum().diff(u)).reshape(self.u_adj.shape))
-#
-#            #print('G1*uadj ', (G1 * self.u_adj).sum())
-#            #print('G1*uadj.diffdt ', ((G1 * self.u_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
-#
-#            #print('G2*dtadj ', (G2*self.dt_adj).sum())
-#            #print('G2*dtadj.diffdt ', ((G2*self.dt_adj).sum().diff(dt)).reshape(self.dt_adj.shape))
-#
-#            
-#
-#
-##            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
-##            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-##            self.t[1:] = self.t[0] + np.cumsum(self.dt)
-#
-#
-#            
-#            # recompute residual
-##            b = self.dudt - self.f(self.uMid, s)
-##            norm_b = np.sqrt((np.ravel(b)**2).sum())
-##            if disp:
-##                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
-##                print('iteration, norm_b', iNewton, norm_b)
-##            if norm_b < atol or norm_b < rtol * norm_b0:
-##                return self.t, self.u
-#
-#            # recompute matrix
-##            Smat = self.Schur(self.alpha)
-#
-#        # did not meet tolerance, error message
-#        #print('lssSolve: Newton solver did not converge in {0} iterations')
