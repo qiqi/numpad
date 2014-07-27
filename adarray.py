@@ -496,6 +496,9 @@ class adarray:
     def __len__(self):
         return self._value.__len__()
 
+    def obliviate(self):
+        self._current_state.obliviate()
+
     # ------------------ object operations ----------------- #
 
     def copy(self):

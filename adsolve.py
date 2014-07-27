@@ -82,6 +82,7 @@ class SolutionState(IntermediateState):
         self.jacobian = jacobian
 
     def obliviate(self):
+        IntermediateState.obliviate(self)
         self.residual = None
         self.jacobian = None
 
@@ -128,7 +129,7 @@ class adsolution(adarray):
         _DEBUG_perturb_new(self)
 
     def obliviate(self):
-        self._initial_state.obliviate()
+        adarray.obliviate(self)
         del self._n_Newton
         del self._res_norm
 

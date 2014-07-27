@@ -21,8 +21,8 @@ from __future__ import division, print_function, absolute_import
 import pdb
 import gc
 import unittest
-from adarray import *
-from adsolve import *
+from numpad.adarray import *
+from numpad.adsolve import *
 
 def collect(state):
     gc.collect()

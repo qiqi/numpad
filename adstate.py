@@ -115,6 +115,19 @@ class IntermediateState:
         if self.other:
             yield self.other
 
+    def obliviate(self):
+        # remove self from the depender list (_to_refs) of its dependees
+        for state in self.froms():
+            state._to_refs = [ref for ref in state._to_refs \
+                              if ref() is not self]
+        # remove reference to dependees
+        if self.prev:
+            self.prev = None
+        if self.other:
+            self.other = None
+        if hasattr(self, 'multiplier') and self.multiplier:
+            del self.multiplier
+
     def next_state(self, multiplier, other_state=None, op_name=''):
         '''
         Generate a state that evolves from this state,
