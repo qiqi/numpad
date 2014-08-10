@@ -54,16 +54,18 @@ class csr_matrix:
         '''
         Only implemented for a single vector b
         '''
-        assert b.ndim == 1
-        A_x_b = adarray(self._value * b._value)
+        if b.ndim == 1:
+            A_x_b = adarray(self._value * b._value)
+            A_x_b.next_state(self._value, b, '*')
 
-        A_x_b.next_state(self._value, b, '*')
+            data_multiplier = sp.csr_matrix((b._value[self.j],
+                                  (self.i, np.arange(self.data.size))))
+            A_x_b.next_state(data_multiplier, self.data, '*')
+            return A_x_b
+        else:
+            assert b.ndim == 2
+            return transpose([self * bi for bi in b.T])
 
-        data_multiplier = sp.csr_matrix((b._value[self.j],
-                                         (self.i, np.arange(self.data.size))))
-        A_x_b.next_state(data_multiplier, self.data, '*')
-
-        return A_x_b
 
 
 def spsolve(A, b):
@@ -144,3 +146,6 @@ if __name__ == '__main__':
     print('Adj - Adj1', np.linalg.norm(adj - adj1))
     print('Adj - fd', np.linalg.norm(adj - fd))
     print('Adj1 - fd', np.linalg.norm(adj1 - fd))
+
+    # second test
+    u1 = tridiag(a) * transpose([b, b])
