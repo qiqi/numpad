@@ -63,8 +63,10 @@ class csr_matrix:
             A_x_b.next_state(data_multiplier, self.data, '*')
             return A_x_b
         else:
-            assert b.ndim == 2
-            return transpose([self * bi for bi in b.T])
+            shape = b.shape[1:]
+            b = b.reshape([b.shape[0], -1])
+            a = transpose([self * bi for bi in b.T])
+            return a.reshape((a.shape[0],) + shape)
 
 
 
@@ -148,4 +150,4 @@ if __name__ == '__main__':
     print('Adj1 - fd', np.linalg.norm(adj1 - fd))
 
     # second test
-    u1 = tridiag(a) * transpose([b, b])
+    u1 = tridiag(a) * transpose([[b, b], [b,b]])
