@@ -156,6 +156,10 @@ def random(*args, **kargs):
     return array(np.random.random(*args, **kargs))
 
 @append_docstring_from_numpy
+def eye(*args, **kargs):
+    return array(np.eye(*args, **kargs))
+
+@append_docstring_from_numpy
 def linspace(*args, **kargs):
     return array(np.linspace(*args, **kargs))
 
@@ -800,6 +804,8 @@ def diff(f, u, mode='auto'):
     else:
         raise NotImplementedError()
 
+    if isinstance(derivative, numbers.Number) and derivative == 0:
+        derivative = sp.csr_matrix((f.size, u.size), dtype=float)
     return derivative
 
 
