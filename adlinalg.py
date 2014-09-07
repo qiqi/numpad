@@ -2,7 +2,6 @@ import os
 import sys
 import unittest
 import numbers
-import pylab
 import numpy as np
 
 sys.path.append(os.path.realpath('..')) # for running unittest
@@ -27,6 +26,7 @@ def solve(A, b):
 # =========================================================== #
 class _AnalyticalInverseTest(unittest.TestCase):
     def testDiagonalPerturbation(self):
+        import pylab
         N = 2
 
         A_additional_diag = array(1)

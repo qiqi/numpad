@@ -2,7 +2,6 @@ import os
 import sys
 import unittest
 import numbers
-import pylab
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as splinalg
@@ -86,6 +85,7 @@ def spsolve(A, b):
 # =========================================================== #
 
 if __name__ == '__main__':
+    import pylab
     # data = ones([3, 2, 2])
     # data[:,0,1] = 0
     # row_ptr = np.array([0,1,2,3], int)
