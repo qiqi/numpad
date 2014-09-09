@@ -1,8 +1,28 @@
+# garbage collect states that can no longer be reached
+# Copyright (C) 2014
+# Qiqi Wang  qiqi.wang@gmail.com
+# engineer-chaos.blogspot.com
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+from __future__ import division, print_function, absolute_import
+
 import pdb
 import gc
 import unittest
-from adarray import *
-from adsolve import *
+from numpad.adarray import *
+from numpad.adsolve import *
 
 def collect(state):
     gc.collect()

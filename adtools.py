@@ -1,3 +1,24 @@
+# interpolation
+# that are established through nonlinear solvers
+# Copyright (C) 2014
+# Qiqi Wang  qiqi.wang@gmail.com
+# engineer-chaos.blogspot.com
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+from __future__ import division, print_function, absolute_import
+
 import os
 import sys
 sys.path.append(os.path.realpath('..')) # for running unittest
@@ -15,7 +36,7 @@ class interp:
     y.derivative(x)           # derivative of interpolant
     '''
     def __init__(self, x0, y0, type='linear'):
-        assert (base(x0)[1:] > base(x0)[:-1]).all()
+        assert (value(x0)[1:] > value(x0)[:-1]).all()
         x0, y0 = array(x0), array(y0)
         self.x0 = x0.copy()
         if type == 'linear':
@@ -36,7 +57,7 @@ class interp:
 
     def find(self, x):
         'which interval to look at?'
-        i = np.searchsorted(base(self.x0), base(x))
+        i = np.searchsorted(value(self.x0), value(x))
         np.maximum(i, 1, i)
         np.minimum(i, self.x0.size - 1, i)
         x0, x1 = self.x0[i - 1], self.x0[i]
@@ -70,7 +91,7 @@ class interp:
         return yp
 
 
-class SanityCheck(unittest.TestCase):
+class _SanityCheck(unittest.TestCase):
     def testMatch(self):
         N = 11
         x0 = random(N); x0.sort()
@@ -78,7 +99,7 @@ class SanityCheck(unittest.TestCase):
         for interp_type in ('linear', 'cubic'):
             y = interp(x0, y0, interp_type)
             x = x0.copy()
-            self.assertAlmostEqual(abs(base(y(x) - y0)).max(), 0)
+            self.assertAlmostEqual(abs(value(y(x) - y0)).max(), 0)
 
     def testLinear(self):
         N = 11
@@ -88,7 +109,7 @@ class SanityCheck(unittest.TestCase):
         for interp_type in ('linear',):
             y = interp(x0, y0, interp_type)
             x = linspace(-1, N-2, 10000)
-            self.assertAlmostEqual(abs(base(y(x) - x)).max(), 0)
+            self.assertAlmostEqual(abs(value(y(x) - x)).max(), 0)
 
     def testMatchDeriv(self):
         N = 11
@@ -97,8 +118,8 @@ class SanityCheck(unittest.TestCase):
         y = interp(x0, y0, 'cubic')
         x = x0.copy()
 
-        yp0 = base(y.y0[:,1])
-        yp1 = base(y.derivative(x))
+        yp0 = value(y.y0[:,1])
+        yp1 = value(y.derivative(x))
         yp2 = np.diag(y(x).diff(x).todense())
         self.assertAlmostEqual(abs(yp1 - yp0).max(), 0)
         self.assertAlmostEqual(abs(yp2 - yp0).max(), 0)
