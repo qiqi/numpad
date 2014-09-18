@@ -134,11 +134,29 @@ class adsolution(adarray):
         del self._res_norm
 
 
+def replace_func_globals(f):
+    f.backup_func_globals = f.func_globals.copy()
+    import numpad
+    for key in f.func_globals:
+        if f.func_globals[key] is np:
+            f.func_globals[key] = numpad
+        elif hasattr(f.func_globals[key], '__module__') \
+        and str(f.func_globals[key].__module__).startswith('numpy') \
+        and key in numpad.__dict__:
+            f.func_globals[key] = numpad.__dict__[key]
+
+def restore_func_globals(f):
+    if f.backup_func_globals:
+        for key in f.func_globals:
+            if f.func_globals[key] is not f.backup_func_globals[key]:
+                f.func_globals[key] = f.backup_func_globals[key]
+
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
     u = adarray(value(u0).copy())
     _DEBUG_perturb_new(u)
 
+    replace_func_globals(func)
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
         res_norm = np.linalg.norm(res._value, np.inf)
@@ -150,15 +168,21 @@ def solve(func, u0, args=(), kargs={},
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
+            restore_func_globals(func)
             return adsolution(u, res, i_Newton + 1)
 
         # Newton update
         J = res.diff(u).tocsr()
-        minus_du = splinalg.spsolve(J, np.ravel(res._value), use_umfpack=False)
+        if J.shape[0] > 1:
+            minus_du = splinalg.spsolve(J, np.ravel(res._value),
+                                        use_umfpack=False)
+        else:
+            minus_du = res._value / J.toarray()[0,0]
         u._value -= minus_du.reshape(u.shape)
         u = adarray(u._value)  # unlink operation history if any
         _DEBUG_perturb_new(u)
     # not converged
+    restore_func_globals(func)
     return adsolution(u, res, np.inf)
 
 
