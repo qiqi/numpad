@@ -107,8 +107,7 @@ if CASE == 'vanderpol':
 
 
     for mu in mus[1:]:
-       
-        mu += 1e-6
+        
 
         for iNewton in range(15):
 
@@ -162,8 +161,8 @@ if CASE == 'vanderpol':
             print('adjoint residuum %.40f' %adj_res)
             
             #projection
-            pr = (solver.dudt*solver.u_adj[1:]).sum(1) / (solver.dudt*solver.dudt).sum(1)
-            solver.u_adj[1:] = solver.u_adj[1:] - (solver.dudt*pr[:,newaxis])
+            pr = (solver.dudt*solver.u_adj[:-1]).sum(1) / (solver.dudt*solver.dudt).sum(1)
+            solver.u_adj[:-1] = solver.u_adj[:-1] - (solver.dudt*pr[:,newaxis])
 
 
             #update primal and adjoint
