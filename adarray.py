@@ -32,7 +32,7 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.adstate import *
 
-# --------------------- debug --------------------- #
+# ----------------- debug utilities ------------------ #
 
 __DEBUG_MODE__ = False
 __DEBUG_TOL__ = None
@@ -788,6 +788,41 @@ class adarray:
     def diff(self, u, mode='auto'):
         return diff(self, u, mode)
 
+# ------------- replace numpy operations ------------- #
+
+if np.set_numeric_ops()['add'] == np.add:
+    def _add(x1, x2, out=None):
+        if isinstance(x2, adarray):
+            return x2.__add__(x1)
+        else:
+            return np.add(x1, x2, out)
+    np.set_numeric_ops(add=_add)
+
+if np.set_numeric_ops()['subtract'] == np.subtract:
+    def _sub(x1, x2, out=None):
+        if isinstance(x2, adarray):
+            return (-x2).__add__(x1)
+        else:
+            return np.subtract(x1, x2, out)
+    np.set_numeric_ops(subtract=_sub)
+
+if np.set_numeric_ops()['multiply'] == np.multiply:
+    def _mul(x1, x2, out=None):
+        if isinstance(x2, adarray):
+            return x2.__mul__(x1)
+        else:
+            return np.multiply(x1, x2, out)
+    np.set_numeric_ops(multiply=_mul)
+
+if np.set_numeric_ops()['true_divide'] == np.true_divide:
+    def _div(x1, x2, out=None):
+        if isinstance(x2, adarray):
+            return (x2**(-1)).__mul__(x1)
+        else:
+            return np.true_divide(x1, x2, out)
+    np.set_numeric_ops(divide=_div)
+    np.set_numeric_ops(true_divide=_div)
+
 # ------------------ differentiation ------------------ #
 
 def diff(f, u, mode='auto'):
@@ -815,8 +850,36 @@ def diff(f, u, mode='auto'):
 #                                                             #
 # =========================================================== #
 
+class _NumpyCastTest(unittest.TestCase):
+    def testAddSubCast(self):
+        N = 10
+        a = np.ones(N)
+        b = ones(N)
+        self.assertTrue(isinstance(a + b, adarray))
+        self.assertTrue(isinstance(b + a, adarray))
+        self.assertTrue(isinstance(b + b, adarray))
+        self.assertTrue(isinstance(a + a, np.ndarray))
+        self.assertTrue(isinstance(a - b, adarray))
+        self.assertTrue(isinstance(b - a, adarray))
+        self.assertTrue(isinstance(b - b, adarray))
+        self.assertTrue(isinstance(a - a, np.ndarray))
+
+    def testMulDivCast(self):
+        N = 10
+        a = np.ones(N)
+        b = ones(N)
+        self.assertTrue(isinstance(a * b, adarray))
+        self.assertTrue(isinstance(b * a, adarray))
+        self.assertTrue(isinstance(b * b, adarray))
+        self.assertTrue(isinstance(a * a, np.ndarray))
+        self.assertTrue(isinstance(a / b, adarray))
+        self.assertTrue(isinstance(b / a, adarray))
+        self.assertTrue(isinstance(b / b, adarray))
+        self.assertTrue(isinstance(a / a, np.ndarray))
+
 class _ManipulationTest(unittest.TestCase):
     def testArray(self):
+        print('testArray')
         N = 10
         a = random(N)
         b = random(N)
@@ -824,17 +887,23 @@ class _ManipulationTest(unittest.TestCase):
         d = random(N)
         e = array([[a, b], [c, d]])
 
-        I, O = sp.eye(N,N), sp.eye(N,N) * 0
-        self.assertEqual(0, (e.diff(a, 'tangent') - sp.vstack([I,O,O,O])).nnz)
-        self.assertEqual(0, (e.diff(a, 'adjoint') - sp.vstack([I,O,O,O])).nnz)
-        self.assertEqual(0, (e.diff(b, 'tangent') - sp.vstack([O,I,O,O])).nnz)
-        self.assertEqual(0, (e.diff(b, 'adjoint') - sp.vstack([O,I,O,O])).nnz)
-        self.assertEqual(0, (e.diff(c, 'tangent') - sp.vstack([O,O,I,O])).nnz)
-        self.assertEqual(0, (e.diff(c, 'adjoint') - sp.vstack([O,O,I,O])).nnz)
-        self.assertEqual(0, (e.diff(d, 'tangent') - sp.vstack([O,O,O,I])).nnz)
-        self.assertEqual(0, (e.diff(d, 'adjoint') - sp.vstack([O,O,O,I])).nnz)
+        def analytical(pos):
+            ind = np.r_[:N]
+            ind_ptr = np.zeros(N * pos), np.r_[:N+1], N * np.ones(N * (3-pos))
+            ind_ptr = np.hstack(ind_ptr)
+            shape = 4 * N, N
+            return sp.csr_matrix((np.ones(N), ind, ind_ptr), shape=shape)
+        self.assertEqual(0, (e.diff(a, 'tangent') - analytical(0)).nnz)
+        self.assertEqual(0, (e.diff(a, 'adjoint') - analytical(0)).nnz)
+        self.assertEqual(0, (e.diff(b, 'tangent') - analytical(1)).nnz)
+        self.assertEqual(0, (e.diff(b, 'adjoint') - analytical(1)).nnz)
+        self.assertEqual(0, (e.diff(c, 'tangent') - analytical(2)).nnz)
+        self.assertEqual(0, (e.diff(c, 'adjoint') - analytical(2)).nnz)
+        self.assertEqual(0, (e.diff(d, 'tangent') - analytical(3)).nnz)
+        self.assertEqual(0, (e.diff(d, 'adjoint') - analytical(3)).nnz)
 
     def testDot(self):
+        print('testDot')
         N = 20
         a = random((10, N))
         b = random((N, 30))
@@ -851,6 +920,7 @@ class _ManipulationTest(unittest.TestCase):
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testTranspose(self):
+        print('testTranspose')
         N = 10
         a = random(N)
         b = random(N)
@@ -868,6 +938,7 @@ class _ManipulationTest(unittest.TestCase):
 
 class _IndexingTest(unittest.TestCase):
     def testIndex(self):
+        print('testIndex')
         N = 10
         i = [2,5,-1]
         a = random(N)
@@ -882,6 +953,7 @@ class _IndexingTest(unittest.TestCase):
 
 class _OperationsTest(unittest.TestCase):
     def testAdd(self):
+        print('testAdd')
         N = 1000
         a = random(N)
         b = random(N)
@@ -892,6 +964,7 @@ class _OperationsTest(unittest.TestCase):
         self.assertEqual(0, (c.diff(b, 'adjoint') - sp.eye(N,N)).nnz)
 
     def testSub(self):
+        print('testSub')
         N = 1000
         a = random(N)
         b = random(N)
@@ -902,6 +975,7 @@ class _OperationsTest(unittest.TestCase):
         self.assertEqual(0, (c.diff(b, 'adjoint') + sp.eye(N,N)).nnz)
 
     def testMul(self):
+        print('testMul')
         N = 1000
         a = random(N)
         b = random(N)
@@ -916,6 +990,7 @@ class _OperationsTest(unittest.TestCase):
                 5 * sp.dia_matrix((a._value, 0), (N,N))).nnz)
 
     def testDiv(self):
+        print('testDiv')
         N = 10
         a = random(N)
         b = random(N)
@@ -928,6 +1003,7 @@ class _OperationsTest(unittest.TestCase):
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testPow(self):
+        print('testPow')
         N = 10
         a = random(N)
         b = 5
@@ -937,6 +1013,7 @@ class _OperationsTest(unittest.TestCase):
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testExpLog(self):
+        print('testExpLog')
         N = 10
         a = random(N)
         c = exp(a)
@@ -949,6 +1026,7 @@ class _OperationsTest(unittest.TestCase):
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testSinCos(self):
+        print('testSinCos')
         N = 10
         a = random(N)
         b = sin(a)
@@ -961,6 +1039,7 @@ class _OperationsTest(unittest.TestCase):
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
 
     def testSum(self):
+        print('testSum')
         M, N = 4, 10
         a = random([M, N])
         b = sum(a, 0)
@@ -982,7 +1061,7 @@ class _Poisson1dTest(unittest.TestCase):
         return res / dx**2 + f
 
     def testPoissonResidual(self):
-        print()
+        print('testPoissonResidual')
         #N = 40960
         N = 496
         dx = 1. / N
@@ -1038,7 +1117,7 @@ class _Poisson2dTest(unittest.TestCase):
         return res
 
     def testPoissonResidual(self):
-        print()
+        print('testPoisson2DResidual')
         N, M = 256, 512
         # N, M = 256, 12
         dx, dy = 1. / N, 1. / M
@@ -1099,7 +1178,7 @@ class _Poisson3dTest(unittest.TestCase):
         return res
 
     def testPoissonResidual(self):
-        print()
+        print('testPoisson3DResidual')
         # N, M, L = 8, 24, 32
         N, M, L = 128, 24, 32
         dx, dy, dz = 1. / N, 1. / M, 1. / L
@@ -1158,7 +1237,6 @@ class _Poisson3dTest(unittest.TestCase):
         # pylab.figure()
         # pylab.spy(lapl, marker='.')
 
-
 class _Burgers1dTest(unittest.TestCase):
     def firstOrderFlux(self, u):
         u = hstack([0, u, 0])
@@ -1169,6 +1247,7 @@ class _Burgers1dTest(unittest.TestCase):
                gt_smooth(u[1:], u[:-1]) * f_min
 
     def testFirstOrderResidual(self):
+        print('testBurgersResidual')
         N = 4096
         dx = 1. / N
         u = random(N-1)
@@ -1178,5 +1257,6 @@ class _Burgers1dTest(unittest.TestCase):
         self.assertTrue(res.diff(u, 'adjoint').shape == (N-1,N-1))
 
 if __name__ == '__main__':
+    from numpad import *
     # _DEBUG_mode()
     unittest.main()

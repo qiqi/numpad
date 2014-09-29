@@ -134,31 +134,38 @@ class adsolution(adarray):
         del self._res_norm
 
 
-def replace_func_globals(f):
-    f.__backup_globals__ = f.__globals__.copy()
-    import numpad
-    for key in f.__globals__:
-        if f.__globals__[key] is np:
-            f.__globals__[key] = numpad
-        elif hasattr(f.__globals__[key], '__module__') \
-        and str(f.__globals__[key].__module__).startswith('numpy') \
-        and key in numpad.__dict__:
-            f.__globals__[key] = numpad.__dict__[key]
-
-def restore_func_globals(f):
-    if f.__backup_globals__:
+class replace_func_globals:
+    def __init__(self, f):
+        self.f = f
+        self.old_globals = {}
+        self.new_globals = {}
+        import numpad
         for key in f.__globals__:
-            if f.__globals__[key] is not f.__backup_globals__[key]:
-                f.__globals__[key] = f.__backup_globals__[key]
+            if f.__globals__[key] is np:
+                self.old_globals[key] = f.__globals__[key]
+                self.new_globals[key] = numpad
+            elif hasattr(f.__globals__[key], '__module__') \
+            and str(f.__globals__[key].__module__).startswith('numpy') \
+            and key in numpad.__dict__:
+                self.old_globals[key] = f.__globals__[key]
+                self.new_globals[key] = numpad.__dict__[key]
+
+    def __call__(self, *args, **argv):
+        for key, val in self.new_globals.items():
+            self.f.__globals__[key] = val
+        result = self.f(*args, **argv)
+        for key, val in self.old_globals.items():
+            self.f.__globals__[key] = val
+        return result
 
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
     u = adarray(value(u0).copy())
     _DEBUG_perturb_new(u)
 
-    replace_func_globals(func)
+    func = replace_func_globals(func)
     for i_Newton in range(max_iter):
-        res = func(u, *args, **kargs)  # TODO: how to put into adarray context?
+        res = func(u, *args, **kargs)
         res_norm = np.linalg.norm(res._value, np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
@@ -168,7 +175,6 @@ def solve(func, u0, args=(), kargs={},
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
-            restore_func_globals(func)
             return adsolution(u, res, i_Newton + 1)
 
         # Newton update
@@ -182,7 +188,6 @@ def solve(func, u0, args=(), kargs={},
         u = adarray(u._value)  # unlink operation history if any
         _DEBUG_perturb_new(u)
     # not converged
-    restore_func_globals(func)
     return adsolution(u, res, np.inf)
 
 
