@@ -135,21 +135,21 @@ class adsolution(adarray):
 
 
 def replace_func_globals(f):
-    f.backup_func_globals = f.func_globals.copy()
+    f.__backup_globals__ = f.__globals__.copy()
     import numpad
-    for key in f.func_globals:
-        if f.func_globals[key] is np:
-            f.func_globals[key] = numpad
-        elif hasattr(f.func_globals[key], '__module__') \
-        and str(f.func_globals[key].__module__).startswith('numpy') \
+    for key in f.__globals__:
+        if f.__globals__[key] is np:
+            f.__globals__[key] = numpad
+        elif hasattr(f.__globals__[key], '__module__') \
+        and str(f.__globals__[key].__module__).startswith('numpy') \
         and key in numpad.__dict__:
-            f.func_globals[key] = numpad.__dict__[key]
+            f.__globals__[key] = numpad.__dict__[key]
 
 def restore_func_globals(f):
-    if f.backup_func_globals:
-        for key in f.func_globals:
-            if f.func_globals[key] is not f.backup_func_globals[key]:
-                f.func_globals[key] = f.backup_func_globals[key]
+    if f.__backup_globals__:
+        for key in f.__globals__:
+            if f.__globals__[key] is not f.__backup_globals__[key]:
+                f.__globals__[key] = f.__backup_globals__[key]
 
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
