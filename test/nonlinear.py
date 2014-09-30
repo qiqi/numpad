@@ -92,7 +92,7 @@ if CASE == 'vanderpol':
     mus = linspace(0.2,1.0,2)
     # x0 = random.rand(2)
     x0 = array([0.5, 0.5])
-    dt, T = 0.01, 100
+    dt, T = 0.01,0.05 
     tmp=int(T / dt)
     t = 30 + dt * arange(tmp)
 
@@ -105,12 +105,11 @@ if CASE == 'vanderpol':
     solver = lssSolver(vanderpol, x0, mus[0], t, dt, u_adj, dt_adj)
     u, t = [solver.u.copy()], [solver.t.copy()]
 
-
+    
+    print(solver.dt.shape, solver.t.shape) 
     for mu in mus[1:]:
        
-        mu += 1e-6
-
-        for iNewton in range(15):
+        for iNewton in range(6):
 
             ubase = array(base(solver.u))
             tbase = array(base(solver.t))
@@ -127,74 +126,137 @@ if CASE == 'vanderpol':
             solver.J = costfunction(ubase,solver.target,mubase)
             print('J %.40f' %solver.J) 
 
+
+           
+ 
+            #compute Jacobi of (G1,G2) wrt (u,dt) componentwise in 5th iteration
+            if iNewton == 5:
+               ## G2 wrt dt:
+               #for i in range(solver.dt.shape[0]):
+               #  unit=zeros(solver.dt.shape)
+               #  unit[i]=1.0
+               #  G2unit_dt = array((G2 * unit).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
+               #  print(G2unit_dt)
+               #  outputBinary(G2unit_dt,G2unit_dt.shape[0],'binaryN5/G2unit_dt'+str(i)+'.bin')
+               #  #print(G2unit_dt)
+               #print('test',array(G2.diff(dtbase)))
+     
+               ## G2 wrt u:
+               #for i in range(solver.dt.shape[0]):
+               #  unit=zeros(solver.dt.shape)
+               #  unit[i]=1.0
+               #  G2unit_u = array((G2 * unit).sum().diff(ubase)) #.reshape(solver.dt_adj.shape)
+               #  G2unit_u=transpose(G2unit_u)
+               #  print(G2unit_u)
+               #  outputBinary(G2unit_u,G2unit_u.shape[0],'binaryN5/G2unit_u'+str(i)+'.bin')
+               #print('test', array(G2.diff(ubase)))
+     
+     
+               ## G1 wrt u:
+               #for i in range(solver.u.shape[0]):
+               #  unit=zeros(solver.u.shape)
+               #  unit[i,0]=1.0
+               #  G1unit_u = array((G1 * unit).sum().diff(ubase)) #.reshape(u.shape)
+               #  G1unit_u=transpose(G1unit_u)
+               #  print(G1unit_u)
+               #  outputBinary(G1unit_u,G1unit_u.shape[0],'binaryN5/G1unit_u1_'+str(i)+'.bin')
+     
+               #  unit=zeros(solver.u.shape)
+               #  unit[i,1]=1.0
+               #  G1unit_u = array((G1 * unit).sum().diff(ubase)) #.reshape(u.shape)
+               #  G1unit_u=transpose(G1unit_u)
+               #  print(G1unit_u)
+               #  outputBinary(G1unit_u,G1unit_u.shape[0],'binaryN5/G1unit_u2_'+str(i)+'.bin')
+               #print('test', array(G1.diff(ubase)))
+              
+     
+               # G1 wrt dt:
+               for i in range(solver.u.shape[0]):
+                 unit=zeros(solver.u.shape)
+                 unit[i,0]=1.0
+                 G1unit_dt = array((G1 * unit).sum().diff(dtbase)).reshape(solver.dt.shape)
+                 #G1unit_u=transpose(G1unit_u)
+                 print(G1unit_dt)
+                 outputBinary(G1unit_dt,G1unit_dt.shape[0],'binaryN5/G1unit_dt1_'+str(i)+'.bin')
+     
+                 unit=zeros(solver.u.shape)
+                 unit[i,1]=1.0
+                 G1unit_dt = array((G1 * unit).sum().diff(dtbase)).reshape(solver.dt.shape)
+                 #G1unit_dt=transpose(G1unit_dt)
+                 print(G1unit_dt)
+                 outputBinary(G1unit_dt,G1unit_dt.shape[0],'binaryN5/G1unit_dt2_'+str(i)+'.bin')
+               print('test', array(G1.diff(dtbase)))
+
+
             
-            #compute adjoint update
-            J_u = array((solver.J).diff(ubase).todense()).reshape(solver.u_adj.shape)
-            #print('J_u...',J_u)
-            G1_u = array((G1 * solver.u_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
-            #print('G1_u...',G1_u)
-            G2_u = array((G2 * solver.dt_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
-            #print('G2_u...', G2_u)
-            G1_dt = array((G1 * solver.u_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
-            #print('G1_dt...', G1_dt)
-            G2_dt = array((G2 * solver.dt_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
-            #print('G2_dt...', G2_dt)
-            
-            u_adj_next =  J_u \
-                        + G1_u \
-                        + G2_u
-            dt_adj_next = G1_dt \
-                        + G2_dt
+            ##compute adjoint update
+            #J_u = array((solver.J).diff(ubase).todense()).reshape(solver.u_adj.shape)
+            ##print('J_u...',J_u)
+            #G1_u = array((G1 * solver.u_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
+            ##print('G1_u...',G1_u)
+            #G2_u = array((G2 * solver.dt_adj).sum().diff(ubase)).reshape(solver.u_adj.shape)
+            ##print('G2_u...', G2_u)
+            #G1_dt = array((G1 * solver.u_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
+            ##print('G1_dt...', G1_dt)
+            #G2_dt = array((G2 * solver.dt_adj).sum().diff(dtbase)).reshape(solver.dt_adj.shape)
+            ##print('G2_dt...', G2_dt)
+            #
+            #u_adj_next =  J_u \
+            #            + G1_u \
+            #            + G2_u
+            #dt_adj_next = G1_dt \
+            #            + G2_dt
            
             #compute residuals
-            adj_res = (ravel(u_adj_next - solver.u_adj)**2).sum() #\
-                    # + (ravel(dt_adj_next - solver.dt_adj)**2).sum()
+            #adj_res = (ravel(u_adj_next - solver.u_adj)**2).sum() + (ravel(dt_adj_next - solver.dt_adj)**2).sum()
+            #adj_res =  (ravel(dt_adj_next - solver.dt_adj)**2).sum()
+            #adj_res = sqrt(adj_res)
             prim_res = sqrt((ravel(prim_res)**2).sum()) 
             #if iNewton == 0:
             #    adj_res0 = adj_res
             #    prim_res0 = prim_res
-            adj_res = adj_res # / adj_res0
-            prim_res = prim_res # / prim_res0
-            adjresfile.write('%.40f \n' %(adj_res))
+            #adj_res = adj_res  / adj_res0
+            #prim_res = prim_res  / prim_res0
+            #adjresfile.write('%.40f \n' %(adj_res))
             primresfile.write('%.40f \n' %(prim_res))
 
             
-            print('adjoint residuum %.40f' %adj_res)
+            #print('adjoint residuum %.40f' %adj_res)
             
-            #projection
-            pr = (solver.dudt*solver.u_adj[1:]).sum(1) / (solver.dudt*solver.dudt).sum(1)
-            solver.u_adj[1:] = solver.u_adj[1:] - (solver.dudt*pr[:,newaxis])
+            
 
-
-            #update primal and adjoint
+            #update primal
             solver.u = G1
             solver.dt = G2
             solver.t[1:] = solver.t[0] + cumsum(solver.dt)
-            solver.u_adj =  u_adj_next
-            solver.dt_adj = dt_adj_next
-
-            #if iNewton >0:
-            #  deltauadj = (solver.u_adj[1:]-solver.u_adj[:-1]) /solver.dt_adj[:,newaxis]
-            #  pr = (deltauadj*solver.u_adj[:-1]).sum(1) / ((deltauadj*deltauadj).sum(1))
-            #  solver.u_adj[:-1] = solver.u_adj[:-1] - (deltauadj*pr[:,newaxis])
-           
-            
-
-            
-
-            #compute reduced gradient
-            G1_s = array((G1 * solver.u_adj).sum().diff(mubase))
-            G2_s = array((G2 * solver.dt_adj).sum().diff(mubase))
-            redgrad = G1_s + G2_s
-            print('reduced gradient %.40f ' %redgrad)
-            redgradfile.write('%.40f \n'%redgrad)
 
 
+            ##update adjoint
+            #if iNewton > 5:
+            #  solver.u_adj =  u_adj_next
+            #  solver.dt_adj = dt_adj_next
 
-            print(using('newton'+str(iNewton)))
-            if iNewton % 10 == 0 :
-                outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj'+str(iNewton)+'.dat')
-                outputVector1d(solver.dt_adj,solver.dt_adj.shape, 'dtadj'+str(iNewton)+'.dat')
+
+            ##projection
+            #if iNewton > -1:
+            #     dudt = solver.f(solver.u,mu)
+            #     pr = (dudt*solver.u_adj).sum(1) / (dudt*dudt).sum(1)
+            #     solver.u_adj = solver.u_adj - (dudt*pr[:,newaxis])
+                       
+            #
+            ##compute reduced gradient
+            #G1_s = array((G1 * solver.u_adj).sum().diff(mubase))
+            #G2_s = array((G2 * solver.dt_adj).sum().diff(mubase))
+            #redgrad = G1_s + G2_s
+            #print('reduced gradient %.40f ' %redgrad)
+            #redgradfile.write('%.40f \n'%redgrad)
+
+
+
+           # print(using('newton'+str(iNewton)))
+           # if iNewton % 10 == 0 :
+           #     outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj'+str(iNewton)+'.dat')
+           #     outputVector1d(solver.dt_adj,solver.dt_adj.shape, 'dtadj'+str(iNewton)+'.dat')
             
             #figure(1)
             #xlabel('time')
@@ -208,15 +270,15 @@ if CASE == 'vanderpol':
 
     outputVector2d(solver.u,solver.u.shape,'u.dat')
     outputVector1d(solver.t,solver.t.shape, 't.dat')
-    outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj.dat')
-    outputVector1d(solver.dt_adj,solver.dt_adj.shape, 'dtadj.dat')
+    #outputVector2d(solver.u_adj, solver.u_adj.shape,'uadj.dat')
+    #outputVector1d(solver.dt_adj,solver.dt_adj.shape, 'dtadj.dat')
 
     show(block=True)
 
 #    u, t = array(u), array(t)
    
 #    figure(figsize=(5,10))
-#    contourf(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)
+#    contour4f(mus[:,newaxis] + t * 0, t, u[:,:,0], 501)
 #    ylim([base(t).min(1).max(), base(t).max(1).min()])
 #    xlabel(r'$\mu$')
 #    ylabel(r'$t$')
