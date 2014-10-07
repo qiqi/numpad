@@ -455,8 +455,8 @@ class adarray:
         self._ind = np.arange(self.size).reshape(self.shape)
         self._current_state = InitialState(self)
 
-    # def __array__(self):
-    #     return self._value
+    def __array__(self):
+        return self._value
 
     def _ind_casted_to(self, shape):
         ind = np.zeros(shape, dtype=int)
