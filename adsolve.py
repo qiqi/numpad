@@ -134,7 +134,7 @@ class adsolution(adarray):
         del self._res_norm
 
 
-class replace_func_globals:
+class replace__globals__:
     def __init__(self, f):
         self.f = f
         self.old_globals = {}
@@ -163,7 +163,7 @@ def solve(func, u0, args=(), kargs={},
     u = adarray(value(u0).copy())
     _DEBUG_perturb_new(u)
 
-    func = replace_func_globals(func)
+    func = replace__globals__(func)
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)
         res_norm = np.linalg.norm(res._value, np.inf)
