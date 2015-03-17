@@ -44,7 +44,7 @@ def make_array(u_and_p):
     
 def cavity(u_and_p, u_and_p0, dt, f=0):
     # extend velocity to ghost cells with boundary conditions
-    p, u_x, u_y = make_array(u_and_p)
+    p, u_x, u_y = make_array(0.5 * (u_and_p + u_and_p0))
     
     # compute cell center values
     u_x_c = 0.5 * (u_x[1:,1:-1] + u_x[:-1,1:-1])
@@ -96,37 +96,52 @@ def cavity(u_and_p, u_and_p0, dt, f=0):
 # ---------------------- time integration --------------------- #
 N = 50
 dx = dy = 1. / N
-t, dt = 0, 1.
+t, dt = 0, 0.1
 Re = 10000
 
-u_and_p = zeros(N * (3 * N - 2))
-force = zeros(N * (3 * N - 2))
+u_and_p_0 = zeros(N * (3 * N - 2))
 
-while True:
+for iTimeStep in range(1000):
     print('t = ', t)
-    u_and_p = solve(cavity, u_and_p, args=(u_and_p, dt, force),
-                    rel_tol=0.05, abs_tol=1E-8)
-    if u_and_p._n_Newton == 1:
-        break
-    elif u_and_p._n_Newton < 4:
-        dt *= 2
-    t += dt
+    u_and_p = solve(cavity, u_and_p_0, args=(u_and_p_0, dt),
+                    rel_tol=1E-6, abs_tol=1E-8)
     u_and_p.obliviate()
 
+    res = cavity(u_and_p, u_and_p_0, dt)
+    print(np.linalg.norm(value(res)))
+
+    E_block = res.diff(u_and_p_0).tocsr()
+    G_block = res.diff(u_and_p).tocsr()
+
+    E_filename = 'E_block_{0:06d}.npz'.format(iTimeStep)
+    G_filename = 'G_block_{0:06d}.npz'.format(iTimeStep)
+    np.savez(E_filename, data=E_block.data, indices=E_block.indices, indptr=E_block.indptr)
+    np.savez(G_filename, data=G_block.data, indices=G_block.indices, indptr=G_block.indptr)
+
+    t += dt
+    u_and_p_0 = u_and_p
+
 # visualization
-# import numpy as np
-# x = (np.arange(N) + 0.5) * dx
-# y = (np.arange(N) + 0.5) * dy
-# p, u_x, u_y = make_array(u_and_p)
-# p = base(p)
-# u_x = 0.5 * base(u_x[1:,1:-1] + u_x[:-1,1:-1])
-# u_y = 0.5 * base(u_y[1:-1,1:] + u_y[1:-1,:-1])
-# 
-# from pylab import *
+import numpy as np
+x = (np.arange(N) + 0.5) * dx
+y = (np.arange(N) + 0.5) * dy
+p, u_x, u_y = make_array(u_and_p)
+p = value(p)
+u_x = 0.5 * value(u_x[1:,1:-1] + u_x[:-1,1:-1])
+u_y = 0.5 * value(u_y[1:-1,1:] + u_y[1:-1,:-1])
+
+from pylab import *
 # streamplot(x, y, u_x.T, u_y.T, density=5)
-# axis('scaled')
-# axis([0,1,0,1])
-# xlabel('x')
-# ylabel('y')
+contour(x, y, u_x.T, 50)
+axis('scaled')
+axis([0,1,0,1])
+xlabel('x')
+ylabel('y')
+figure()
+contour(x, y, u_y.T, 50)
+axis('scaled')
+axis([0,1,0,1])
+xlabel('x')
+ylabel('y')
 # 
 # savefig('cavity{0:d}.png'.format(Re))
