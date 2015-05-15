@@ -86,9 +86,10 @@ def grad_dual(phi, geo):
 def ns_flux(rho, u, v, E, p, grad_u):
     # viscous stress
     dudx, dudy, dvdx, dvdy = grad_u
-    sigma_xx = mu * (2 * dudx - 2./3 * (dudx + dvdy))
-    sigma_yy = mu * (2 * dvdy - 2./3 * (dudx + dvdy))
-    sigma_xy = mu * (dudy + dvdx)
+    mu_t = 0 # blabla
+    sigma_xx = (mu + mu_t) * (2 * dudx - 2./3 * (dudx + dvdy))
+    sigma_yy = (mu + mu_t) * (2 * dvdy - 2./3 * (dudx + dvdy))
+    sigma_xy = (mu + mu_t) * (dudy + dvdx)
 
     F = array([rho * u, rho * u**2 + p - sigma_xx,
                         rho * u * v    - sigma_xy,
