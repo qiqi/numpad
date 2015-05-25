@@ -392,7 +392,10 @@ def hstack(adarrays):
 
 @append_docstring_from_numpy
 def vstack(adarrays):
-    return concatenate(adarrays, axis=0)
+    if np.array(adarrays[0]).ndim <= 1:
+        return array(adarrays)
+    else:
+        return concatenate(adarrays, axis=0)
 
 @append_docstring_from_numpy
 def meshgrid(x, y):
