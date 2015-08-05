@@ -134,30 +134,6 @@ class adsolution(adarray):
         del self._res_norm
 
 
-class replace__globals__:
-    def __init__(self, f):
-        self.f = f
-        self.old_globals = {}
-        self.new_globals = {}
-        import numpad
-        for key in f.__globals__:
-            if f.__globals__[key] is np:
-                self.old_globals[key] = f.__globals__[key]
-                self.new_globals[key] = numpad
-            elif hasattr(f.__globals__[key], '__module__') \
-            and str(f.__globals__[key].__module__).startswith('numpy') \
-            and key in numpad.__dict__:
-                self.old_globals[key] = f.__globals__[key]
-                self.new_globals[key] = numpad.__dict__[key]
-
-    def __call__(self, *args, **argv):
-        for key, val in self.new_globals.items():
-            self.f.__globals__[key] = val
-        result = self.f(*args, **argv)
-        for key, val in self.old_globals.items():
-            self.f.__globals__[key] = val
-        return result
-
 def solve(func, u0, args=(), kargs={},
           max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
     u = adarray(value(u0).copy())

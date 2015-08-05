@@ -103,8 +103,8 @@ class _SanityCheck(unittest.TestCase):
 
     def testLinear(self):
         N = 11
-        x0 = arange(N)
-        y0 = arange(N)
+        x0 = array(np.arange(N))
+        y0 = array(np.arange(N))
         y0[-1] = 0
         for interp_type in ('linear',):
             y = interp(x0, y0, interp_type)

@@ -32,6 +32,9 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 
 from numpad.adstate import *
 
+# ---------------- numpy equivalentsa ---------------- #
+newaxis = np.newaxis
+
 # ----------------- debug utilities ------------------ #
 
 __DEBUG_MODE__ = False
@@ -163,9 +166,9 @@ def eye(*args, **kargs):
 def linspace(*args, **kargs):
     return array(np.linspace(*args, **kargs))
 
-@append_docstring_from_numpy
-def arange(*args, **kargs):
-    return array(np.arange(*args, **kargs))
+# @append_docstring_from_numpy
+# def arange(*args, **kargs):
+#     return array(np.arange(*args, **kargs))
 
 @append_docstring_from_numpy
 def loadtxt(*args, **kargs):
@@ -392,7 +395,8 @@ def hstack(adarrays):
 
 @append_docstring_from_numpy
 def vstack(adarrays):
-    if np.array(adarrays[0]).ndim <= 1:
+    max_ndim = max(array(a).ndim for a in adarrays)
+    if max_ndim <= 1:
         return array(adarrays)
     else:
         return concatenate(adarrays, axis=0)
@@ -453,6 +457,8 @@ def dot(a, b):
 # ===================== the adarray class ====================== #
 
 class adarray:
+    dtype = np.dtype('float64')
+
     def __init__(self, array):
         self._value = np.asarray(value(array), np.float64)
         self._ind = np.arange(self.size).reshape(self.shape)
@@ -846,6 +852,37 @@ def diff(f, u, mode='auto'):
         derivative = sp.csr_matrix((f.size, u.size), dtype=float)
     return derivative
 
+
+class replace__globals__:
+    def __init__(self, f):
+        self.f = f
+        self.old_globals = {}
+        self.new_globals = {}
+        import numpad
+        for key in f.__globals__:
+            if f.__globals__[key] is np:
+                self.old_globals[key] = f.__globals__[key]
+                self.new_globals[key] = numpad
+            elif hasattr(f.__globals__[key], '__module__') \
+            and str(f.__globals__[key].__module__).startswith('numpy') \
+            and key in numpad.__dict__:
+                self.old_globals[key] = f.__globals__[key]
+                self.new_globals[key] = numpad.__dict__[key]
+
+    def __call__(self, *args, **argv):
+        for key, val in self.new_globals.items():
+            self.f.__globals__[key] = val
+        result = self.f(*args, **argv)
+        for key, val in self.old_globals.items():
+            self.f.__globals__[key] = val
+        return result
+
+
+def diff_func(func, u, args=(), kargs={}):
+    u = adarray(value(u).copy())
+    func = replace__globals__(func)
+    fu = func(u, *args, **kargs)
+    return fu.diff(u)
 
 # =========================================================== #
 #                                                             #
