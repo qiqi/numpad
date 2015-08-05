@@ -439,6 +439,21 @@ def rollaxis(a, axis, start=0):
     return b
 
 @append_docstring_from_numpy
+def roll(a, shift, axis=None):
+    b = adarray(np.roll(a._value, shift, axis))
+
+    if axis is None:
+        data = np.ones(a.size)
+        i = np.ravel(a._ind)
+        j = np.roll(i, shift)
+        multiplier = csr_jac(data, i, j)
+    else:
+        raise NotImplementedError
+
+    b.next_state(multiplier, a, 'roll')
+    return b
+
+@append_docstring_from_numpy
 def dot(a, b):
     dot_axis = a.ndim - 1  # axis to sum over
     if b.ndim > 1:
@@ -487,7 +502,7 @@ class adarray:
                     self._current_state.next_state(multiplier,
                                 other._current_state, op_name)
         else:
-            raise NotImplementedError()
+            raise NotImplementedError
 
     @property
     def size(self):
@@ -842,7 +857,7 @@ def diff(f, u, mode='auto'):
     elif mode == 'adjoint':
         derivative = diff_adjoint(f._current_state, u._initial_state)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     if isinstance(derivative, numbers.Number) and derivative == 0:
         derivative = sp.csr_matrix((f.size, u.size), dtype=float)
@@ -954,6 +969,16 @@ class _ManipulationTest(unittest.TestCase):
         discrepancy = c_diff_a - sp.kron(sp.eye(c.shape[0]), b.T._value)
         if discrepancy.nnz > 0:
             self.assertAlmostEqual(0, np.abs(discrepancy.data).max())
+
+    def testRoll(self):
+        print('testRoll')
+        N = 10
+        a = linspace(1, N, N)
+        b = roll(a, -1)
+        dbda = b.diff(a)
+        self.assertAlmostEqual(0, value((b[:-1] - a[1:])**2).sum())
+        self.assertAlmostEqual(0, dbda[0,0])
+        self.assertAlmostEqual(1, dbda[0,1])
 
     def testTranspose(self):
         print('testTranspose')
