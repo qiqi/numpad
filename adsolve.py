@@ -54,16 +54,30 @@ class ResidualState(IntermediateState):
             f_diff_soln = next(iter_f_diff_dependers)
 
             if f_diff_soln is not 0:
-                if hasattr(f_diff_soln, 'todense'):
-                    f_diff_soln = f_diff_soln.todense()
-                f_diff_soln = np.array(f_diff_soln)
-
                 # inverse of Jacobian matrix
                 self_diff_soln = self.solution().jacobian.T
-                soln_diff_self = splinalg.factorized(self_diff_soln.tocsc())
-                f_diff_self = np.array([-soln_diff_self(b) \
-                                        for b in f_diff_soln])
-                f_diff_self = np.matrix(f_diff_self.reshape(f_diff_soln.shape))
+                # check if diagonal matrix
+                n = self_diff_soln.shape[0]
+                try:
+                    is_diag = all(self_diff_soln.indices == np.arange(n)) and \
+                              all(self_diff_soln.indptr == np.arange(n+1))
+                except TypeError:
+                    is_diag = False
+                if is_diag:
+                    assert f_diff_soln.shape[-1] == n
+                    # inverse of diagonal matrix
+                    soln_diff_self = self_diff_soln.copy()
+                    soln_diff_self.data = 1. / np.array(soln_diff_self.data)
+                    f_diff_self = -f_diff_soln * soln_diff_self
+                else:
+                    if hasattr(f_diff_soln, 'todense'):
+                        f_diff_soln = f_diff_soln.todense()
+                    f_diff_soln = np.array(f_diff_soln)
+                    soln_diff_self = splinalg.factorized(self_diff_soln.tocsc())
+                    f_diff_self = np.array([-soln_diff_self(b) \
+                                            for b in f_diff_soln])
+                    f_diff_self = f_diff_self.reshape(f_diff_soln.shape)
+                    f_diff_self = sp.csr_matrix(f_diff_self)
 
         f_diff_self_1 = IntermediateState.diff_adjoint(self,
                                                        iter_f_diff_dependers)
@@ -100,15 +114,31 @@ class SolutionState(IntermediateState):
             if resid_diff_u is 0:
                 return 0
             else:
-                if hasattr(resid_diff_u, 'todense'):
-                    resid_diff_u = resid_diff_u.todense()
-                resid_diff_u = np.array(resid_diff_u)
                 # inverse of Jacobian matrix
                 resid_diff_self = self.jacobian
-                self_diff_resid = splinalg.factorized(resid_diff_self.tocsc())
-                self_diff_u = np.transpose([-self_diff_resid(b) \
+                # check if diagonal matrix
+                n = resid_diff_self.shape[0]
+                try:
+                    is_diag = all(resid_diff_self.indices == np.arange(n)) and \
+                              all(resid_diff_self.indptr == np.arange(n+1))
+                except TypeError:
+                    is_diag = False
+                if is_diag:
+                    # inverse of diagonal matrix
+                    self_diff_resid = resid_diff_self.copy()
+                    self_diff_resid.data = 1 / np.array(self_diff_resid.data)
+
+                    self_diff_u = -self_diff_resid * resid_diff_u
+                    return self_diff_u
+                else:
+                    if hasattr(resid_diff_u, 'todense'):
+                        resid_diff_u = resid_diff_u.todense()
+                    resid_diff_u = np.array(resid_diff_u)
+                    self_diff_resid = splinalg.factorized(resid_diff_self.tocsc())
+                    self_diff_u = np.transpose([-self_diff_resid(b) \
                                             for b in resid_diff_u.T])
-                return np.matrix(self_diff_u.reshape(resid_diff_u.shape))
+                    self_diff_u = self_diff_u.reshape(resid_diff_u.shape)
+                    return sp.csr_matrix(self_diff_u)
         else:
             return 0
 
@@ -194,7 +224,7 @@ class _Poisson1dTest(unittest.TestCase):
         self.assertAlmostEqual(0, np.abs(u._value - 0.5 * x * (1 - x)).max())
 
         # solve tangent equation
-        dudx = np.array(u.diff(dx)).reshape(u.shape)
+        dudx = np.array(u.diff(dx).todense()).reshape(u.shape)
         self.assertAlmostEqual(0, np.abs(dudx - 2 * u._value / dx._value).max())
 
         # solve adjoint equation
@@ -227,8 +257,8 @@ class _Poisson2dTest(unittest.TestCase):
         y = np.linspace(0, 1, M+1)[1:-1]
 
         # solve tangent equation
-        dudx = np.array(u.diff(dx)).reshape(u.shape)
-        dudy = np.array(u.diff(dy)).reshape(u.shape)
+        dudx = np.array(u.diff(dx).todense()).reshape(u.shape)
+        dudy = np.array(u.diff(dy).todense()).reshape(u.shape)
 
         self.assertAlmostEqual(0,
             abs(2 * u._value - (dudx * dx._value + dudy * dy._value)).max())
