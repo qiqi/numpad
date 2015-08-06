@@ -777,6 +777,7 @@ class adarray:
         return self_i
 
     def __setitem__(self, ind, a):
+        a = array(a)
         data = np.ones(self.size)
         data[self._ind[ind]] = 0
         multiplier = dia_jac(data)

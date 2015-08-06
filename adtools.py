@@ -27,6 +27,7 @@ import numpy as np
 import scipy.sparse as sp
 from numpad.adarray import *
 from numpad.adsolve import *
+import numpad.adrandom as random
 
 class interp:
     '''
@@ -94,8 +95,8 @@ class interp:
 class _SanityCheck(unittest.TestCase):
     def testMatch(self):
         N = 11
-        x0 = random(N); x0.sort()
-        y0 = random(N)
+        x0 = random.random(N); x0.sort()
+        y0 = random.random(N)
         for interp_type in ('linear', 'cubic'):
             y = interp(x0, y0, interp_type)
             x = x0.copy()
@@ -113,8 +114,8 @@ class _SanityCheck(unittest.TestCase):
 
     def testMatchDeriv(self):
         N = 11
-        x0 = random(N); x0.sort()
-        y0 = random(N)
+        x0 = random.random(N); x0.sort()
+        y0 = random.random(N)
         y = interp(x0, y0, 'cubic')
         x = x0.copy()
 

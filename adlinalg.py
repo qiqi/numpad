@@ -9,6 +9,7 @@ sys.path.append(os.path.realpath('..')) # for running unittest
 from numpad.adarray import *
 from numpad.adarray import __DEBUG_MODE__, _DEBUG_perturb_new
 from numpad.adsolve import adsolution
+import numpad.adrandom as random
 
 def solve(A, b):
     '''
@@ -30,7 +31,7 @@ class _AnalyticalInverseTest(unittest.TestCase):
         N = 2
 
         A_additional_diag = array(1)
-        A = random([N, N]) + A_additional_diag * eye(N)
+        A = random.random([N, N]) + A_additional_diag * eye(N)
 
         b = eye(N)
         Ainv = solve(A, b)

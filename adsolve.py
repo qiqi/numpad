@@ -124,7 +124,7 @@ class adsolution(adarray):
         self._current_state = SolutionState(self, residual._current_state,
                                             residual.diff(solution))
         self._n_Newton = n_Newton
-        self._res_norm = np.linalg.norm(residual._value)
+        self._res_norm = np.linalg.norm(residual._value.reshape(residual.size))
 
         _DEBUG_perturb_new(self)
 
@@ -142,7 +142,7 @@ def solve(func, u0, args=(), kargs={},
     func = replace__globals__(func)
     for i_Newton in range(max_iter):
         res = func(u, *args, **kargs)
-        res_norm = np.linalg.norm(res._value, np.inf)
+        res_norm = np.linalg.norm(res._value.reshape(res.size), np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
         if not np.isfinite(res_norm):
