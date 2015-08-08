@@ -37,7 +37,7 @@ class _AnalyticalInverseTest(unittest.TestCase):
         Ainv = solve(A, b)
 
         Ainv_diff_A_diag = Ainv.diff(A_additional_diag)
-        Ainv_diff_A_diag = np.array(Ainv_diff_A_diag).reshape([N, N])
+        Ainv_diff_A_diag = np.array(Ainv_diff_A_diag.todense()).reshape([N, N])
 
         Ainv_diff_A_diag_analytical = -np.dot(value(Ainv), value(Ainv))
         difference = Ainv_diff_A_diag - Ainv_diff_A_diag_analytical
