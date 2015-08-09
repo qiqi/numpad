@@ -34,8 +34,6 @@ from numpad.adstate import *
 
 # ---------------- numpy equivalentsa ---------------- #
 newaxis = np.newaxis
-inf = np.inf
-pi = np.pi
 
 # ----------------- debug utilities ------------------ #
 
@@ -781,7 +779,7 @@ class adarray:
     def __setitem__(self, ind, a):
         a = array(a)
         data = np.ones(self.size)
-        data[self._ind[ind]] = 0
+        data[np.ravel(self._ind[ind])] = 0
         multiplier = dia_jac(data)
         self.next_state(multiplier, op_name='[]=0')
 
@@ -1001,7 +999,7 @@ class _ManipulationTest(unittest.TestCase):
 
 
 class _IndexingTest(unittest.TestCase):
-    def testIndex(self):
+    def test1DIndexByInt(self):
         print('testIndex')
         N = 10
         i = [2,5,-1]
@@ -1014,6 +1012,98 @@ class _IndexingTest(unittest.TestCase):
         self.assertEqual(0, (b.diff(a, 'tangent') - J).nnz)
         self.assertEqual(0, (b.diff(a, 'adjoint') - J).nnz)
 
+        c = zeros(N)
+        c[i] = b
+        self.assertEqual(0, (c.diff(b, 'tangent') - J.T).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - J.T).nnz)
+
+        c[i] = a[i]
+        self.assertEqual(0, (c.diff(a, 'tangent') - J.T * J).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - J.T * J).nnz)
+
+    def test2DIndexByInt(self):
+        print('testIndex')
+        N = 10
+        i0, i1 = [2,5,-1], [-2,3,4]
+        a = random.random([N, N])
+        b = a[i0,i1]
+
+        i = np.arange(N)[i0] * N + np.arange(N)[i1]
+        j = np.arange(len(i0))
+        J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N*N,len(i))).T
+        self.assertEqual(0, (b.diff(a, 'tangent') - J).nnz)
+        self.assertEqual(0, (b.diff(a, 'adjoint') - J).nnz)
+
+        c = zeros([N,N])
+        c[i0,i1] = b
+        self.assertEqual(0, (c.diff(b, 'tangent') - J.T).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - J.T).nnz)
+
+        c[i0,i1] = a[i0,i1]
+        self.assertEqual(0, (c.diff(a, 'tangent') - J.T * J).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - J.T * J).nnz)
+
+    def test1DIndexBySlice(self):
+        print('testIndex')
+        N = 10
+        a = random.random(N)
+        b = a[1:]
+
+        i = np.arange(1,N)
+        j = np.arange(N-1)
+        J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N,N-1)).T
+        self.assertEqual(0, (b.diff(a, 'tangent') - J).nnz)
+        self.assertEqual(0, (b.diff(a, 'adjoint') - J).nnz)
+
+        c = zeros(N)
+        c[1:] = b
+        self.assertEqual(0, (c.diff(b, 'tangent') - J.T).nnz)
+        self.assertEqual(0, (c.diff(b, 'adjoint') - J.T).nnz)
+
+        c[1:] = a[1:]
+        self.assertEqual(0, (c.diff(a, 'tangent') - J.T * J).nnz)
+        self.assertEqual(0, (c.diff(a, 'adjoint') - J.T * J).nnz)
+
+    def test2DIndexBySlice(self):
+        print('testIndex')
+        N = 4
+        a = random.random([N, N])
+        b0 = a[1:,:]
+        b1 = a[:,1:]
+
+        c0 = zeros([N, N])
+        c1 = zeros([N, N])
+        c0[1:,:] = b0
+        c1[:,1:] = b1
+
+        i = np.kron(np.arange(1,N), np.ones(N,int)) * N \
+          + np.kron(np.ones(N-1,int), np.arange(N))
+        j = np.arange(N * (N - 1))
+        J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N*N, N*(N-1))).T
+        self.assertEqual(0, (b0.diff(a, 'tangent') - J).nnz)
+        self.assertEqual(0, (b0.diff(a, 'adjoint') - J).nnz)
+
+        self.assertEqual(0, (c0.diff(b0, 'tangent') - J.T).nnz)
+        self.assertEqual(0, (c0.diff(b0, 'adjoint') - J.T).nnz)
+
+        c0[1:,:] = a[1:,:]
+        self.assertEqual(0, (c0.diff(a, 'tangent') - J.T * J).nnz)
+        self.assertEqual(0, (c0.diff(a, 'adjoint') - J.T * J).nnz)
+
+        i = np.kron(np.arange(N), np.ones(N-1,int)) * N \
+          + np.kron(np.ones(N,int), np.arange(1,N))
+        j = np.arange(N * (N - 1))
+        J = sp.csr_matrix((np.ones(len(i)), (i, j)), shape=(N*N, N*(N-1))).T
+        self.assertEqual(0, (b1.diff(a, 'tangent') - J).nnz)
+        self.assertEqual(0, (b1.diff(a, 'adjoint') - J).nnz)
+
+        self.assertEqual(0, (c1.diff(b1, 'tangent') - J.T).nnz)
+        self.assertEqual(0, (c1.diff(b1, 'adjoint') - J.T).nnz)
+
+        c1[:,1:] = a[:,1:]
+        print(c1.diff(a).todense())
+        self.assertEqual(0, (c1.diff(a, 'tangent') - J.T * J).nnz)
+        self.assertEqual(0, (c1.diff(a, 'adjoint') - J.T * J).nnz)
 
 class _OperationsTest(unittest.TestCase):
     def testAdd(self):
@@ -1175,16 +1265,16 @@ class _Poisson2dTest(unittest.TestCase):
         res = -(2 / dx**2 + 2 / dy**2) * u
         res[1:,:] += u[:-1,:] / dx**2
         res[:-1,:] += u[1:,:] / dx**2
-        res[:,1:] += u[:,:-1] / dy**2
-        res[:,:-1] += u[:,1:] / dy**2
+        # res[:,1:] += u[:,:-1] / dy**2
+        # res[:,:-1] += u[:,1:] / dy**2
         res += f
         return res
 
     def testPoissonResidual(self):
         print('testPoisson2DResidual')
-        N, M = 256, 512
-        # N, M = 256, 12
-        dx, dy = 1. / N, 1. / M
+        # N, M = 256, 512
+        N, M = 3, 4
+        dx, dy = 1. / N, np.inf #1. / M
 
         f = np.random.random((N-1, M-1))
         u = np.random.random((N-1, M-1))
@@ -1221,6 +1311,8 @@ class _Poisson2dTest(unittest.TestCase):
                + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
         lapl = sp.kron(lapl_i, sp.eye(M-1,M-1)) / dx**2 \
              + sp.kron(sp.eye(N-1,N-1), lapl_j) / dy**2
+        print(dRdu_tan.todense())
+        print(lapl.todense())
         self.assertEqual((dRdu_tan - lapl).nnz, 0)
         self.assertEqual((dRdu_adj - lapl).nnz, 0)
 
@@ -1322,5 +1414,5 @@ class _Burgers1dTest(unittest.TestCase):
 
 if __name__ == '__main__':
     from numpad import *
-    # _DEBUG_mode()
+    # _DEBUG_perturb_enable()
     unittest.main()

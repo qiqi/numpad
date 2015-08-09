@@ -59,7 +59,9 @@ class ResidualState(IntermediateState):
                 # check if diagonal matrix
                 n = self_diff_soln.shape[0]
                 try:
-                    is_diag = all(self_diff_soln.indices == np.arange(n)) and \
+                    is_diag = self_diff_soln.indices.size == n and \
+                              self_diff_soln.indptr.size == n+1 and \
+                              all(self_diff_soln.indices == np.arange(n)) and \
                               all(self_diff_soln.indptr == np.arange(n+1))
                 except TypeError:
                     is_diag = False
@@ -119,7 +121,9 @@ class SolutionState(IntermediateState):
                 # check if diagonal matrix
                 n = resid_diff_self.shape[0]
                 try:
-                    is_diag = all(resid_diff_self.indices == np.arange(n)) and \
+                    is_diag = resid_diff_self.indices.size == n and \
+                              resid_diff_self.indptr.size == n+1 and \
+                              all(resid_diff_self.indices == np.arange(n)) and \
                               all(resid_diff_self.indptr == np.arange(n+1))
                 except TypeError:
                     is_diag = False
@@ -338,7 +342,8 @@ class _HardSolveTest(unittest.TestCase):
     def testSin2xPlusX(self):
         def sin2xPlusX(x):
             return sin(2 * x) + x
-        x = solve(sin2xPlusX, array(100), rel_tol=1E-12, abs_tol=1E-12)
+        x = solve(sin2xPlusX, array(100), rel_tol=1E-12, abs_tol=1E-12,
+                verbose=False)
         self.assertAlmostEqual(0, value(x))
 
     def testSinAxPlusX(self):
@@ -346,9 +351,8 @@ class _HardSolveTest(unittest.TestCase):
         A = linspace(0, 2, N)
         def sinAxPlusX(x):
             return sin(A * x) + x
-        x = solve(sinAxPlusX, 100 * ones(N),
-            rel_tol=1E-12, abs_tol=1E-12)
-        print(x)
+        x = solve(sinAxPlusX, 100 * ones(N), rel_tol=1E-12, abs_tol=1E-12,
+                verbose=False)
         self.assertAlmostEqual(0, np.linalg.norm(value(x)))
 
 if __name__ == '__main__':

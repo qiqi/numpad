@@ -85,7 +85,7 @@ def spsolve(A, b):
 # =========================================================== #
 
 if __name__ == '__main__':
-    import pylab
+    # import pylab
     # data = ones([3, 2, 2])
     # data[:,0,1] = 0
     # row_ptr = np.array([0,1,2,3], int)
@@ -110,8 +110,8 @@ if __name__ == '__main__':
 
     u = solve(resid, ones(N-1))
     J = u.sum()
-    adj = np.array(J.diff(a)).ravel()
-    pylab.plot(adj)
+    adj = np.array(J.diff(a).todense()).ravel()
+    # pylab.plot(adj)
 
     # sparse matrix way
     def tridiag(a):
@@ -131,8 +131,8 @@ if __name__ == '__main__':
 
     u1 = spsolve(tridiag(a), b)
     J1 = u1.sum()
-    adj1 = np.array(J1.diff(a)).ravel()
-    pylab.plot(adj1)
+    adj1 = np.array(J1.diff(a).todense()).ravel()
+    # pylab.plot(adj1)
 
     # finite difference
     fd = np.zeros(a.size)
@@ -143,7 +143,7 @@ if __name__ == '__main__':
         du = sp.linalg.spsolve(A._value, b._value) - u._value
         fd[i] = du.sum() / 1E-6
 
-    pylab.plot(fd)
+    # pylab.plot(fd)
 
     print('Adj - Adj1', np.linalg.norm(adj - adj1))
     print('Adj - fd', np.linalg.norm(adj - fd))
