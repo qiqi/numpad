@@ -1101,7 +1101,6 @@ class _IndexingTest(unittest.TestCase):
         self.assertEqual(0, (c1.diff(b1, 'adjoint') - J.T).nnz)
 
         c1[:,1:] = a[:,1:]
-        print(c1.diff(a).todense())
         self.assertEqual(0, (c1.diff(a, 'tangent') - J.T * J).nnz)
         self.assertEqual(0, (c1.diff(a, 'adjoint') - J.T * J).nnz)
 
@@ -1311,8 +1310,6 @@ class _Poisson2dTest(unittest.TestCase):
                + sp.dia_matrix((np.ones(M-1), -1), (M-1,M-1))
         lapl = sp.kron(lapl_i, sp.eye(M-1,M-1)) / dx**2 \
              + sp.kron(sp.eye(N-1,N-1), lapl_j) / dy**2
-        print(dRdu_tan.todense())
-        print(lapl.todense())
         self.assertEqual((dRdu_tan - lapl).nnz, 0)
         self.assertEqual((dRdu_adj - lapl).nnz, 0)
 
