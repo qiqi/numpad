@@ -260,7 +260,7 @@ def solve(func, u0, args=(), kargs={},
             if verbose:
                 print('Continuation failed in middle')
                 print('Decreasing step to ', sqrt(dt_ratio))
-            dt_min /= 2
+            dt_min /= dt_ratio
             dt_ratio = sqrt(dt_ratio)
         sys.stdout.flush()
 
