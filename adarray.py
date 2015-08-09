@@ -34,6 +34,8 @@ from numpad.adstate import *
 
 # ---------------- numpy equivalentsa ---------------- #
 newaxis = np.newaxis
+inf = np.inf
+pi = np.pi
 
 # ----------------- debug utilities ------------------ #
 

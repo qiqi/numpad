@@ -164,24 +164,25 @@ class adsolution(adarray):
         del self._res_norm
 
 
-def solve(func, u0, args=(), kargs={},
-          max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
+def solve_newton_with_dt(func, u0, args, kargs, dt,
+          max_iter, abs_tol, rel_tol, verbose):
     u = adarray(value(u0).copy())
     _DEBUG_perturb_new(u)
-
-    func = replace__globals__(func)
     for i_Newton in range(max_iter):
-        res = func(u, *args, **kargs)
+        if dt == np.inf:
+            res = func(u, *args, **kargs)
+        else:
+            res = (u - u0) / dt + func(u, *args, **kargs)
         res_norm = np.linalg.norm(res._value.reshape(res.size), np.inf)
         if verbose:
             print('    ', i_Newton, res_norm)
-        if not np.isfinite(res_norm):
-            break
 
         if i_Newton == 0:
             res_norm0 = res_norm
         if res_norm < max(abs_tol, rel_tol * res_norm0):
             return adsolution(u, res, i_Newton + 1)
+        if not np.isfinite(res_norm) or res_norm > res_norm0 * 1E6:
+            break
 
         # Newton update
         J = res.diff(u).tocsr()
@@ -193,8 +194,71 @@ def solve(func, u0, args=(), kargs={},
         u._value -= minus_du.reshape(u.shape)
         u = adarray(u._value)  # unlink operation history if any
         _DEBUG_perturb_new(u)
+
     # not converged
+    u = adarray(value(u0).copy())
+    res = func(u, *args, **kargs)
     return adsolution(u, res, np.inf)
+
+def psuedo_time_continuation(func, u0, args, kargs, dt_min, dt_max, dt_ratio,
+          max_iter, abs_tol, rel_tol, verbose):
+    dt = dt_min
+    while np.isfinite(dt):
+        if np.abs(dt) > np.abs(dt_max):
+            dt = np.inf
+        if verbose:
+            print('continuation step with dt = ', dt)
+        u = solve_newton_with_dt(func, u0, args, kargs, dt,
+                max_iter, abs_tol, rel_tol, verbose)
+        if not np.isfinite(u._n_Newton):
+            return dt, None
+        else:
+            dt *= dt_ratio
+            u0 = u
+    if np.isfinite(u._n_Newton):
+        return np.inf, u
+
+def solve(func, u0, args=(), kargs={},
+          max_iter=10, abs_tol=1E-6, rel_tol=1E-6, verbose=True):
+    func = replace__globals__(func)
+
+    # try straight Newton first
+    u = solve_newton_with_dt(func, u0, args, kargs, np.inf,
+                max_iter, abs_tol, rel_tol, verbose)
+    if np.isfinite(u._n_Newton):
+        return u
+
+    if verbose:
+        print('Newton failed to converge, starting psuedo time continuation')
+
+    dt_min, dt_max, dt_ratio = 1, 4, 2
+    u = None
+    while u is None:
+        dt_diverged_p, u = psuedo_time_continuation(
+                func, u0, args, kargs, dt_min, dt_max, dt_ratio,
+                max_iter, abs_tol, rel_tol, verbose)
+        if u is not None: return u
+
+        dt_diverged_m, u = psuedo_time_continuation(
+                func, u0, args, kargs, -dt_min, -dt_max, dt_ratio,
+                max_iter, abs_tol, rel_tol, verbose)
+        if u is not None: return u
+
+        if np.abs(dt_diverged_p) == dt_min and np.abs(dt_diverged_m) == dt_min:
+            if verbose:
+                print('Continuation failed at start, halfing min dt')
+            dt_min /= 2
+        elif np.isinf(dt_diverged_p) or np.isinf(dt_diverged_m):
+            if verbose:
+                print('Continuation failed at end, doubling max dt')
+            dt_max *= 2
+        else:
+            if verbose:
+                print('Continuation failed in middle')
+                print('Decreasing step to ', sqrt(dt_ratio))
+            dt_min /= 2
+            dt_ratio = sqrt(dt_ratio)
+        sys.stdout.flush()
 
 
 
@@ -218,7 +282,7 @@ class _Poisson1dTest(unittest.TestCase):
         f = ones(N-1)
         u = zeros(N-1)
 
-        u = solve(self.residual, u, (f, dx), verbose=False)
+        u = solve(self.residual, u, (f, dx))
 
         x = np.linspace(0, 1, N+1)[1:-1]
         self.assertAlmostEqual(0, np.abs(u._value - 0.5 * x * (1 - x)).max())
@@ -251,7 +315,7 @@ class _Poisson2dTest(unittest.TestCase):
         f = ones((N-1, M-1))
         u = ones((N-1, M-1))
 
-        u = solve(self.residual, u, (f, dx, dy), verbose=False)
+        u = solve(self.residual, u, (f, dx, dy))
 
         x = np.linspace(0, 1, N+1)[1:-1]
         y = np.linspace(0, 1, M+1)[1:-1]
@@ -269,6 +333,23 @@ class _Poisson2dTest(unittest.TestCase):
 
         self.assertAlmostEqual(0, abs(np.ravel(u._value) - dJdf).max())
 
+
+class _HardSolveTest(unittest.TestCase):
+    def testSin2xPlusX(self):
+        def sin2xPlusX(x):
+            return sin(2 * x) + x
+        x = solve(sin2xPlusX, array(100), rel_tol=1E-12, abs_tol=1E-12)
+        self.assertAlmostEqual(0, value(x))
+
+    def testSinAxPlusX(self):
+        N = 10
+        A = linspace(0, 2, N)
+        def sinAxPlusX(x):
+            return sin(A * x) + x
+        x = solve(sinAxPlusX, 100 * ones(N),
+            rel_tol=1E-12, abs_tol=1E-12)
+        print(x)
+        self.assertAlmostEqual(0, np.linalg.norm(value(x)))
 
 if __name__ == '__main__':
     # _Poisson2dTest().testPoisson2d()
