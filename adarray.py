@@ -442,13 +442,10 @@ def rollaxis(a, axis, start=0):
 def roll(a, shift, axis=None):
     b = adarray(np.roll(a._value, shift, axis))
 
-    if axis is None:
-        data = np.ones(a.size)
-        i = np.ravel(a._ind)
-        j = np.roll(i, shift)
-        multiplier = csr_jac(data, i, j)
-    else:
-        raise NotImplementedError
+    data = np.ones(a.size)
+    i = np.ravel(a._ind)
+    j = np.ravel(np.roll(a._ind, shift, axis))
+    multiplier = csr_jac(data, i, j)
 
     b.next_state(multiplier, a, 'roll')
     return b
