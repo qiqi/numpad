@@ -162,9 +162,9 @@ def eye(*args, **kargs):
 def linspace(*args, **kargs):
     return array(np.linspace(*args, **kargs))
 
-# @append_docstring_from_numpy
-# def arange(*args, **kargs):
-#     return array(np.arange(*args, **kargs))
+@append_docstring_from_numpy
+def load(*args, **kargs):
+    return array(np.load(*args, **kargs))
 
 @append_docstring_from_numpy
 def loadtxt(*args, **kargs):
